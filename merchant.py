@@ -6,11 +6,11 @@
 import os
 import gzip
 from uuid import uuid4
+from base64 import standard_b64encode as b64encode
 
 from ebaysdk import log
 from ebaysdk.connection import BaseConnection
 from ebaysdk.config import Config
-#from ebaysdk.utils import dict2xml
 
 from libdrebo.utils import to_bytes, Item
 
@@ -205,6 +205,8 @@ class BulkData:
 		self.jobId = kwargs.get('jobId', None)
 		self._bder = None
 		self._reviseType = None
+		self.version = kwargs.get('version', 1127)
+		self.site_id = kwargs.get('site_id', 77)
 
 	def _get_bder(self):
 		return self._bder
@@ -212,12 +214,13 @@ class BulkData:
 
 	def _get_bder_compressed(self):
 		if self._bder:
-			return gzip.compress(to_bytes(self._bder))
+			return b64encode(gzip.compress(to_bytes(self._bder)))
 	bder_compressed = property(_get_bder_compressed)
 
 	def add_item(self, item):
-		key = 'Revise{:s}'.format(item.reviseType)
-		self._data.__dict__[key].append(item)
+		if item.reviseType:
+			key = 'Revise{:s}'.format(item.reviseType)
+			self._data.__dict__[key].append(item)
 
 	def add_items(self, items):
 		for item in items:
@@ -225,17 +228,15 @@ class BulkData:
 
 	def create_bder(self, verb, **kwargs):
 		"""create a BulkDataExchangeRequest"""
-		version = kwargs.get('version', 1127)
-		site_id = kwargs.get('site_id', 77)
 		if verb in self._bdes_list:
 			self._reviseType = verb
 			xmlns = 'xmlns="urn:ebay:apis:eBLBaseComponents"'
-			xml = '<BulkDataExchangeRequests>\n'    # --> filedata
+			xml = '<BulkDataExchangeRequests>'    # --> filedata
 			xml += '<Header>'
-			xml += '<Version>{}</Version>'.format(version)
-			xml += '<SiteID>{}</SiteID>'.format(site_id)
-			xml += '</Header>\n'
-			xml += '<{}Request {}>\n'.format(verb, xmlns)
+			xml += '<Version>{}</Version>'.format(self.version)
+			xml += '<SiteID>{}</SiteID>'.format(self.site_id)
+			xml += '</Header>'
+			xml += '<{}Request {}>'.format(verb, xmlns)
 			data = self._data.__dict__[verb]
 			for item in data:
 				if item.reviseType == 'FixedPriceItem':
@@ -243,10 +244,11 @@ class BulkData:
 					xml += item.reviseData
 					xml += '</Item>'
 				else:
+					xml += '<InventoryStatus>'
 					xml += item.reviseData
-				xml += '\n'
+					xml += '</InventoryStatus>'
 			xml += '</{}Request>'.format(verb)
-			xml += '</BulkDataExchangeRequests>\n'   # <-- filedata
+			xml += '</BulkDataExchangeRequests>'   # <-- filedata
 		else:
 			raise NotImplementedError
 		self._bder = xml

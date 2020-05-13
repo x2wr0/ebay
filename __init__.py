@@ -219,7 +219,7 @@ class EbaySellerList:
 					item.fetch_data(cursor)
 				except Exception as e:
 					xxx = str(e)
-					item = EbayItem(iid, sku)
+					item = EbayItem(iid, sku=sku)
 					item.xxx = xxx
 					items.faulty.append(item)
 					print('!! {:s} [{:s}]: {:s}'.format(iid, sku, xxx))
@@ -252,6 +252,13 @@ class EbaySellerList:
 						pid = self._skus[sku]
 						if item.pid == pid:
 							item.fetch_data(cursor)
+							if len(item.data) <= 1:
+								iid = item.item_id
+								item = EbayItem(iid, pid=pid, sku=sku)
+								item.delivery = 0
+								item.price = 0
+								item.quantity = 0
+								item.set_data(cursor)
 							item._xxx = []
 							items.faulty.remove(item)
 							items.ok.append(item)
@@ -366,3 +373,12 @@ class EbayItem(Item):
 		sql = 'SELECT id_product, reference, price, quantity, delivery FROM ebay_items WHERE ebay_id={}'
 		cursor.execute(sql.format(self.item_id))
 		self.pid, self.sku, self._price, self._quantity, self._delivery = cursor.fetchone()
+
+	def update_data(self, cursor):
+		"""update data in the ebay_items db"""
+		sql = 'UPDATE ebay_items SET id_product, reference, price, quantity, delivery WHERE ebay_id={}'
+		cursor.execute(sql.format(self.item_id))
+
+	def insert_data(self, cursor):
+		sql = 'INSERT INTO ebay_items ...'
+		cursor.execute(sql.format(**values))
