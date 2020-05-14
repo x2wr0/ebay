@@ -30,6 +30,9 @@ class Connection(BaseConnection):
 	*[ReviseInventoryStatus]*
 	*[ReviseFixedPriceItem]*
 	startUploadJob
+	getJobs
+	getJobStatus
+	abortJob
 	"""
 	def __init__(self, **kwargs):
 		super(Connection, self).__init__(method='POST', **kwargs)
@@ -80,7 +83,7 @@ class Connection(BaseConnection):
 			xml += '<{}Request {}>'.format(verb, xmlns)
 			xml += '<uploadJobType>{}</uploadJobType>'.format(data) #.jobType)
 			xml += '<UUID>{}</UUID>'.format(self.uuid)
-			xml += '<fileType>{}</fileType>'.format(self.file_type)	# gzip
+			xml += '<fileType>{}</fileType>'.format(self.file_type)	# 'gzip'
 			xml += '</{}Request>'.format(verb)
 
 		## uploadFileRequest
@@ -123,7 +126,7 @@ class Connection(BaseConnection):
 	def _get_warnings(self):
 		warning_string = ''
 		if len(self._resp_body_warnings) > 0:
-			warning_string = '%s: %s' % (self.verb, ', '.join(self._resp_body_warnings))
+			warning_string = '{:s}: {:s}'.format(self.verb, ', '.join(self._resp_body_warnings))
 		return warning_string
 	warnings = property(_get_warnings)
 
@@ -166,7 +169,8 @@ class Connection(BaseConnection):
 			except IndexError:
 				pass
 
-			msg = 'Domain: %s, Severity: %s, errorId: %s, %s' % (eDomain, eSeverity, eId, eMsg)
+			msg = 'Domain: {:s}, Severity: {:s}, errorId: {:s}, {:s}'.format(
+				eDomain, eSeverity, eId, eMsg)
 
 			if eSeverity == 'Warning':
 				warnings.append(msg)
@@ -178,14 +182,14 @@ class Connection(BaseConnection):
 		self._resp_codes = resp_codes
 
 		if self.config.get('warnings') and len(warnings) > 0:
-			log.warn('%s: %s\n\n' % (self.verb, '\n'.join(warnings)))
+			log.warn('{:s}: {:s}\n\n'.format(self.verb, '\n'.join(warnings)))
 
 		try:
 			if self.response.reply.ack == 'Success' and len(errors) > 0 and self.config.get('errors'):
-				log.error('%s: %s\n\n' % (self.verb, '\n'.join(errors)))
+				log.error('{:s}: {:s}\n\n'.format(self.verb, '\n'.join(errors)))
 			elif len(errors) > 0:
 				if self.config.get('errors'):
-					log.error('%s: %s\n\n' & (self.verb, '\n'.join(errors)))
+					log.error('{:s}: {:s}\n\n'.format(self.verb, '\n'.join(errors)))
 				return errors
 		except AttributeError:
 			pass
@@ -218,6 +222,7 @@ class BulkData:
 	bder_compressed = property(_get_bder_compressed)
 
 	def add_item(self, item):
+		# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
 		if item.reviseType:
 			key = 'Revise{:s}'.format(item.reviseType)
 			self._data.__dict__[key].append(item)
@@ -227,7 +232,7 @@ class BulkData:
 			self.add_item(item)
 
 	def create_bder(self, verb, **kwargs):
-		"""create a BulkDataExchangeRequest"""
+		"""create the BulkDataExchangeRequest content"""
 		if verb in self._bdes_list:
 			self._reviseType = verb
 			xmlns = 'xmlns="urn:ebay:apis:eBLBaseComponents"'
@@ -239,6 +244,7 @@ class BulkData:
 			xml += '<{}Request {}>'.format(verb, xmlns)
 			data = self._data.__dict__[verb]
 			for item in data:
+				# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
 				if item.reviseType == 'FixedPriceItem':
 					xml += '<Item>'
 					xml += item.reviseData

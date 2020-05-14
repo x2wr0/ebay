@@ -43,9 +43,10 @@ def ebay_retrieve_ids(connection):
 		cursor.execute(sql)
 	return dict(cursor.fetchall())
 
-def czekk_sellerlist(api, skus, opt_dict, cursor=None):
+## exemplarische Überbleibsel >>
+def czekk_sellerlist(api, skus, options, cursor=None):
 	result = []
-	api.execute('GetSellerList', opt_dict)
+	api.execute('GetSellerList', options)
 	items = api.response.reply.ItemArray.Item
 	sql = 'INSERT INTO ebay_items (id_product,ebay_id,reference) values (%s,%s,%s)'
 	for i in items:
@@ -80,7 +81,7 @@ def getsellerlist(t0, t1, connection):
 	print('   Entries: {} :: Pages: {}'.format(total, pages))
 
 	# konkrete Abfrage
-	opt_dict = {
+	options = {
 		'EndTimeFrom':t0,
 		'EndTimeTo':t1,
 		'Pagination':{'EntriesPerPage':200},
@@ -91,9 +92,9 @@ def getsellerlist(t0, t1, connection):
 	result = []
 	while page <= pages:
 		try:
-			opt_dict['Pagination']['PageNumber'] = page
+			options['Pagination']['PageNumber'] = page
 			with connection.cursor() as cursor:
-				result.extend(czekk_sellerlist(api, presta_skus, opt_dict, cursor))
+				result.extend(czekk_sellerlist(api, presta_skus, options, cursor))
 			connection.commit()
 			reply = api.response.reply
 			print('-- returned item count: {} :: page: {}'.format(
@@ -103,7 +104,7 @@ def getsellerlist(t0, t1, connection):
 			print(e)
 		page += 1
 	return result
-
+## << --------------------------
 
 class Counter:
 	def __init__(self, **kwargs):
@@ -237,7 +238,7 @@ class EbaySellerList:
 						self._counter.x += 1
 
 		self._items_process[page] = items
-		return items
+		#return items
 
 	def process_items(self, page):
 		items = self._items_process.pop(page)
@@ -303,7 +304,7 @@ class EbaySellerList:
 				self._counter.n -= 1
 				if self.debug:
 					print('!! {:s} [{:s}]: {:s}'.format(item.item_id, item.sku, xxx))
-		return (items.ok, items.faulty)
+		#return (items.ok, items.faulty)
 
 class EbayItem(Item):
 	""" eBay item class
