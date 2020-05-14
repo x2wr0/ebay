@@ -43,6 +43,69 @@ def ebay_retrieve_ids(connection):
 		cursor.execute(sql)
 	return dict(cursor.fetchall())
 
+## exemplarische Überbleibsel >>
+def czekk_sellerlist(api, skus, options, cursor=None):
+	result = []
+	api.execute('GetSellerList', options)
+	items = api.response.reply.ItemArray.Item
+	sql = 'INSERT INTO ebay_items (id_product,ebay_id,reference) values (%s,%s,%s)'
+	for i in items:
+		sku = i.SKU
+		iid = i.ItemID
+		xxx = ''
+		if sku in skus.keys():
+			pid = skus[sku]
+			if cursor:
+				try:
+					cursor.execute(sql, (pid, iid, sku))
+				except Exception as e:
+					xxx = 'ebaydb %s' % str(e)
+					print('// PID: %s :: %s' % (pid, xxx))
+		else:
+			pid = ''
+			xxx = 'keine shop-id'
+			print('// SKU: %s / IID: %s :: %s' % (sku, iid, xxx))
+		result.append((pid, iid, sku, xxx))
+	return result
+
+def getsellerlist(t0, t1, connection):
+	# Abfrage erstellen & Übersicht anfordern
+	api = Trading(warnings=True, timeout=60)
+	api.execute('GetSellerList', {
+		'EndTimeFrom': t0, 'EndTimeTo': t1,
+		'Pagination':{'EntriesPerPage':200},
+		'GranularityLevel':'Coarse',
+		'OutputSelector':'PaginationResult'})
+	pages = int(api.response.reply.PaginationResult.TotalNumberOfPages)
+	total = int(api.response.reply.PaginationResult.TotalNumberOfEntries)
+	print('   Entries: {} :: Pages: {}'.format(total, pages))
+
+	# konkrete Abfrage
+	options = {
+		'EndTimeFrom':t0,
+		'EndTimeTo':t1,
+		'Pagination':{'EntriesPerPage':200},
+		'GranularityLevel':'Coarse',
+		'OutputSelector':'ItemID,SKU,PaginationResult,ReturnedItemCountActual'}
+
+	page = 1
+	result = []
+	while page <= pages:
+		try:
+			options['Pagination']['PageNumber'] = page
+			with connection.cursor() as cursor:
+				result.extend(czekk_sellerlist(api, presta_skus, options, cursor))
+			connection.commit()
+			reply = api.response.reply
+			print('-- returned item count: {} :: page: {}'.format(
+				reply.ReturnedItemCountActual, page))
+		#except ConnectionError as e:
+		except Exception as e:
+			print(e)
+		page += 1
+	return result
+## << --------------------------
+
 class Counter:
 	def __init__(self, **kwargs):
 		for key in kwargs:
