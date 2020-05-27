@@ -89,11 +89,11 @@ class Connection(BaseConnection):
 		## uploadFileRequest
 		if verb == 'uploadFile':
 			xml += '<{}Request {} {}>'.format(verb, xmlns, xmlns_sct)
-			xml += '<taskReferenceId>{}</taskReferenceId>'.format(data.jobId)
-			xml += '<fileReferenceId>{}</fileReferenceId>'.format(data.fileReferenceId)
-			xml += '<fileFormat>{}</fileFormat>'.format(self.file_type)
+			xml += '<taskReferenceId>{}</taskReferenceId>'.format(data.jobId) # BulkData.jobId
+			xml += '<fileReferenceId>{}</fileReferenceId>'.format(data.fileReferenceId) # BulkData.fileReferenceId
+			xml += '<fileFormat>{}</fileFormat>'.format(self.file_type)       # BulkData.file_type
 			xml += '<fileAttachment>'
-			xml += '<Data>{}</Data>'.format(data.bder_compressed)
+			xml += '<Data>{}</Data>'.format(data.bder_compressed)             # BulkData.bder_compressed
 			xml += '</fileAttachment>'
 			xml += '</{}Request>'.format(verb)
 
@@ -232,7 +232,7 @@ class BulkData:
 			self.add_item(item)
 
 	def create_bder(self, verb, **kwargs):
-		"""create the BulkDataExchangeRequest content"""
+		"""create the BulkDataExchangeRequests content"""
 		if verb in self._bdes_list:
 			self._reviseType = verb
 			xmlns = 'xmlns="urn:ebay:apis:eBLBaseComponents"'
@@ -250,7 +250,7 @@ class BulkData:
 					xml += item.reviseData
 					xml += '</Item>'
 				else:
-					xml += '<InventoryStatus>'
+					xml += '\n<InventoryStatus>'
 					xml += item.reviseData
 					xml += '</InventoryStatus>'
 			xml += '</{}Request>'.format(verb)
