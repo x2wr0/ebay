@@ -18,6 +18,8 @@ from libdrebo.utils import to_bytes, Item
 url_filetransfer = 'storage.ebay.com/FileTransferService'
 url_bulkexchange = 'webservices.ebay.com/BulkDataExchangeService'
 
+api_version = 1149
+
 class Connection(BaseConnection):
 	"""Large Merchant Services Base Connection Class
 	
@@ -48,7 +50,7 @@ class Connection(BaseConnection):
 		#self.base_list_nodes = []
 		self.uuid = uuid4()
 		self.file_type = self.config.get('file_type', 'gzip')
-		self.version = self.config.get('version', '1127')
+		self.version = self.config.get('version', api_version)
 		self.site_id = self.config.get('site_id', '77')
 
 	def build_request_url(self, verb):
@@ -209,7 +211,7 @@ class BulkData:
 		self.jobId = kwargs.get('jobId', None)
 		self._bder = None
 		self._reviseType = None
-		self.version = kwargs.get('version', 1127)
+		self.version = kwargs.get('version', api_version)
 		self.site_id = kwargs.get('site_id', 77)
 
 	def _get_bder(self):
@@ -236,12 +238,13 @@ class BulkData:
 		if verb in self._bdes_list:
 			self._reviseType = verb
 			xmlns = 'xmlns="urn:ebay:apis:eBLBaseComponents"'
-			xml = '<BulkDataExchangeRequests>'    # --> filedata
+			xml = '<?xml version="1.0" encoding="utf-8"?>' # --> filedata
+			xml += '<BulkDataExchangeRequests>'
 			xml += '<Header>'
 			xml += '<Version>{}</Version>'.format(self.version)
 			xml += '<SiteID>{}</SiteID>'.format(self.site_id)
 			xml += '</Header>'
-			xml += '<{}Request {}>'.format(verb, xmlns)
+			xml += '<{}Request {}><Version>{}</Version>'.format(verb, xmlns, self.version)
 			data = self._data.__dict__[verb]
 			for item in data:
 				# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
@@ -254,7 +257,7 @@ class BulkData:
 					xml += item.reviseData
 					xml += '</InventoryStatus>'
 			xml += '</{}Request>'.format(verb)
-			xml += '</BulkDataExchangeRequests>'   # <-- filedata
+			xml += '</BulkDataExchangeRequests>'           # <-- filedata
 		else:
 			raise NotImplementedError
 		self._bder = xml
