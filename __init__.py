@@ -3,7 +3,6 @@
 # o3/2o2o: 0.1   
 
 
-import gzip
 from uuid import uuid4
 
 from ebaysdk import log
@@ -99,6 +98,7 @@ class Connection(BaseConnection):
 		## startUploadJobRequest
 		if verb == 'startUploadJob':
 			xml += '<{}Request {}>'.format(verb, xmlns)
+			xml += '<UUID>{}</UUID>'.format(self.uuid)
 			xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
 			xml += '</{}Request>'.format(verb)
 

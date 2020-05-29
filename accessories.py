@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
+#! -*- coding: utf-8 -*-
 
-# o3/2o2o: 0.2.4.7 (python3)   :: wro-guys
+# o5/2o2o: 0.2.4.7             :: wro-guys
 
 
 import gzip

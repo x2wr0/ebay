@@ -1,8 +1,9 @@
 #! -*- coding: utf-8 -*-
 
-# o5/2o2o: 0.1   
+# o5/2o2o: 0.1                 :: wro-guys
 
 
+import gzip
 from base64 import standard_b64encode as b64encode
 
 from libdrebo.utils import to_bytes, Item
@@ -28,6 +29,9 @@ class Item:
 		self._xxx.append(xxx)
 	xxx = property(_get_xxx, _set_xxx)
 """
+
+api_version = 1149
+
 
 class BulkData:
 	"""collection of upload job data
