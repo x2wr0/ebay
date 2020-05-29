@@ -1,7 +1,7 @@
 from libdrebo.shop import Shop, ShopProfile
-from .accessories import EbayItem, EbaySellerList
 from . import Connection as Merchant
-from . import BulkData
+from .bulkdata import BulkData
+from .accessories import EbayItem, EbaySellerList
 
 
 shop = Shop(ShopProfile('ps'))

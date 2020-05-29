@@ -3,16 +3,12 @@
 # o3/2o2o: 0.1   
 
 
-import os
 import gzip
 from uuid import uuid4
-from base64 import standard_b64encode as b64encode
 
 from ebaysdk import log
 from ebaysdk.connection import BaseConnection
 from ebaysdk.config import Config
-
-from libdrebo.utils import to_bytes, Item
 
 
 url_filetransfer = 'storage.ebay.com/FileTransferService'
@@ -84,7 +80,7 @@ class Connection(BaseConnection):
 		## createUploadJobRequest
 		if verb == 'createUploadJob':
 			xml += '<{}Request {}>'.format(verb, xmlns)
-			xml += '<uploadJobType>{}</uploadJobType>'.format(data) #.jobType)
+			xml += '<uploadJobType>{}</uploadJobType>'.format(data) # '<jobType>'
 			xml += '<UUID>{}</UUID>'.format(self.uuid)
 			xml += '<fileType>{}</fileType>'.format(self.file_type)	# 'gzip'
 			xml += '</{}Request>'.format(verb)
@@ -94,7 +90,7 @@ class Connection(BaseConnection):
 			xml += '<{}Request {} {}>'.format(verb, xmlns, xmlns_sct)
 			xml += '<taskReferenceId>{}</taskReferenceId>'.format(data.jobId) # BulkData.jobId
 			xml += '<fileReferenceId>{}</fileReferenceId>'.format(data.fileReferenceId) # BulkData.fileReferenceId
-			xml += '<fileFormat>{}</fileFormat>'.format(self.file_type)       # BulkData.file_type
+			xml += '<fileFormat>{}</fileFormat>'.format(self.file_type)
 			xml += '<fileAttachment>'
 			xml += '<Data>{}</Data>'.format(data.bder_compressed)             # BulkData.bder_compressed
 			xml += '</fileAttachment>'
@@ -103,7 +99,7 @@ class Connection(BaseConnection):
 		## startUploadJobRequest
 		if verb == 'startUploadJob':
 			xml += '<{}Request {}>'.format(verb, xmlns)
-			xml += '<jobId>{}</jobId>'.format(data.jobId)
+			xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
 			xml += '</{}Request>'.format(verb)
 
 		## getJobsRequest
@@ -115,13 +111,13 @@ class Connection(BaseConnection):
 		## getJobStatusRequest
 		if verb == 'getJobStatus':
 			xml += '<{}Request {}>'.format(verb, xmlns)
-			xml += '<jobId>{}</jobId>'.format(data.jobId)
+			xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
 			xml += '</{}Request>'.format(verb)
 
 		## abortJobRequest
 		if verb == 'abortJob':
 			xml += '<{}Request {}>'.format(verb, xmlns)
-			xml += '<jobId>{}</jobId>'.format(data.jobId)
+			xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
 			xml += '</{}Request>'.format(verb)
 
 		return xml
@@ -198,68 +194,3 @@ class Connection(BaseConnection):
 			pass
 
 		return []
-
-class BulkData:
-	"""collection of upload job data
-
-	ReviseFixedPriceItem- / ReviseInventoryStatus-Data for
-	inserting into BulkDataExchangeRequest
-	"""
-	def __init__(self, **kwargs):
-		self._bdes_list = ['ReviseFixedPriceItem', 'ReviseInventoryStatus']
-		self._data = Item(**{key: [] for key in self._bdes_list})
-		self.fileReferenceId = kwargs.get('fileReferenceId', None)
-		self.jobId = kwargs.get('jobId', None)
-		self._bder = None
-		self._reviseType = None
-		self.version = kwargs.get('version', api_version)
-		self.site_id = kwargs.get('site_id', 77)
-
-	def _get_bder(self):
-		return self._bder
-	bder = property(_get_bder)
-
-	def _get_bder_compressed(self):
-		if self._bder:
-			return b64encode(gzip.compress(to_bytes(self._bder)))
-	bder_compressed = property(_get_bder_compressed)
-
-	def add_item(self, item):
-		# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
-		if item.reviseType:
-			key = 'Revise{:s}'.format(item.reviseType)
-			self._data.__dict__[key].append(item)
-
-	def add_items(self, items):
-		for item in items:
-			self.add_item(item)
-
-	def create_bder(self, verb, **kwargs):
-		"""create the BulkDataExchangeRequests content"""
-		if verb in self._bdes_list:
-			self._reviseType = verb
-			xmlns = 'xmlns="urn:ebay:apis:eBLBaseComponents"'
-			xml = '<?xml version="1.0" encoding="utf-8"?>' # --> filedata
-			xml += '<BulkDataExchangeRequests>'
-			xml += '<Header>'
-			xml += '<Version>{}</Version>'.format(self.version)
-			xml += '<SiteID>{}</SiteID>'.format(self.site_id)
-			xml += '</Header>'
-			xml += '<{}Request {}><Version>{}</Version>'.format(verb, xmlns, self.version)
-			data = self._data.__dict__[verb]
-			for item in data:
-				# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
-				if item.reviseType == 'FixedPriceItem':
-					xml += '<Item>'
-					xml += item.reviseData
-					xml += '</Item>'
-				else:
-					xml += '\n<InventoryStatus>'
-					xml += item.reviseData
-					xml += '</InventoryStatus>'
-			xml += '</{}Request>'.format(verb)
-			xml += '</BulkDataExchangeRequests>'           # <-- filedata
-		else:
-			raise NotImplementedError
-		self._bder = xml
-		#return xml

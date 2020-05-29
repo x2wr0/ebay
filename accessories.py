@@ -22,6 +22,27 @@ EBAY_FACTOR = dec('1.08')
 TAX_DE = dec('1.19')
 
 
+"""
+STR_DELIVER_SOON = 'deliver soon..'
+STR_DELIVER_LATE = 'deliver late..'
+
+def sql_connect(conf):
+	return pymysql.connect(**conf)
+
+class Item:
+	def __init__(self, **kwargs):
+		self._xxx = []	# Fehler Log
+		for key in kwargs:
+			self.__dict__[key] = kwargs[key]
+
+	def _get_xxx(self):
+		return ' - '.join(self._xxx)
+	def _set_xxx(self, xxx):
+		self._xxx.append(xxx)
+	xxx = property(_get_xxx, _set_xxx)
+"""
+
+
 ebay_strftime = lambda t: strftime(EBAY_STR_FORMAT_TIME, t)
 def ebay_timings(delta):
 	now = datetime.now()
