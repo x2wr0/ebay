@@ -1,385 +1,265 @@
-# -*- coding: utf-8 -*-
+#! -*- coding: utf-8 -*-
 
-# o3/2o2o: 0.2.4.7 (python3)   :: wro-guys
+# o3/2o2o: 0.1   
 
 
+import os
 import gzip
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
-import decimal
-from time import strftime
+from uuid import uuid4
+from base64 import standard_b64encode as b64encode
 
-from ebaysdk.trading import Connection as Trading
-from ebaysdk.utils import dict2xml
+from ebaysdk import log
+from ebaysdk.connection import BaseConnection
+from ebaysdk.config import Config
 
-from libdrebo.utils import dec, dec2str, str2dec, sql_connect, Item, QQ, QP, STR_DELIVER_SOON, STR_DELIVER_LATE
-from libdrebo.shop import ShopItem
-from libdrebo.config import sql_conf_ebay
+from libdrebo.utils import to_bytes, Item
 
 
-EBAY_STR_FORMAT_TIME = '%Y-%m-%dT%H:%M:%S.000Z'
-EBAY_FACTOR = dec('1.08')
-TAX_DE = dec('1.19')
+url_filetransfer = 'storage.ebay.com/FileTransferService'
+url_bulkexchange = 'webservices.ebay.com/BulkDataExchangeService'
+
+api_version = 1149
 
 
-ebay_strftime = lambda t: strftime(EBAY_STR_FORMAT_TIME, t)
-def ebay_timings(delta):
-	now = datetime.now()
-	then = now + relativedelta(months=delta)
-	now = datetime.timetuple(now)
-	then = datetime.timetuple(then)
-	return (ebay_strftime(now), ebay_strftime(then))
+class Connection(BaseConnection):
+	"""Large Merchant Services Base Connection Class
+	
+	API documentation:
+	https://developer.ebay.com/DevZone/large-merchant-services/Concepts/MakingACall.html
+	
+	Supported calls:
+	createUploadJob
+	uploadFile
+	*[ReviseInventoryStatus]*
+	*[ReviseFixedPriceItem]*
+	startUploadJob
+	getJobs
+	getJobStatus
+	abortJob
+	"""
+	def __init__(self, **kwargs):
+		super(Connection, self).__init__(method='POST', **kwargs)
+		self.config = Config(
+			domain=kwargs.get('domain', 'webservices.ebay.com'),
+			connection_kwargs=kwargs,
+			config_file=kwargs.get('config_file', 'ebay.yaml'))
+		self.config.set('domain', kwargs.get('domain', 'webservices.ebay.com'))
+		self.config.set('content_type', 'text/xml;charset=UTF-8')
+		self.config.set('request_encoding', 'XML')
+		self.config.set('response_encoding', 'XML')
+		#self.datetime_nodes = ['endtimefrom', 'endtimeto', 'timestamp']
+		#self.base_list_nodes = []
+		self.uuid = uuid4()
+		self.file_type = self.config.get('file_type', 'gzip')
+		self.version = self.config.get('version', api_version)
+		self.site_id = self.config.get('site_id', '77')
 
-def calc_ebay_price(price, q=QQ):
-	with decimal.localcontext() as context:
-		context.prec = price.adjusted() + QP
-		price_ebay = price * EBAY_FACTOR * TAX_DE
-	return price_ebay.quantize(q)
-
-def ebay_retrieve_ids(connection):
-	"""return ebay_id, id_product"""
-	with connection.cursor() as cursor:
-		sql = 'SELECT id_product, ebay_id FROM ebay_items'
-		cursor.execute(sql)
-	return dict(cursor.fetchall())
-
-## exemplarische Überbleibsel >>
-def czekk_sellerlist(api, skus, options, cursor=None):
-	result = []
-	api.execute('GetSellerList', options)
-	items = api.response.reply.ItemArray.Item
-	sql = 'INSERT INTO ebay_items (id_product,ebay_id,reference) values (%s,%s,%s)'
-	for i in items:
-		sku = i.SKU
-		iid = i.ItemID
-		xxx = ''
-		if sku in skus.keys():
-			pid = skus[sku]
-			if cursor:
-				try:
-					cursor.execute(sql, (pid, iid, sku))
-				except Exception as e:
-					xxx = 'ebaydb %s' % str(e)
-					print('// PID: %s :: %s' % (pid, xxx))
+	def build_request_url(self, verb):
+		if verb == 'uploadFile':
+			url = 'https://{:s}'.format(url_filetransfer)
+		#if verb == 'createUploadJob' or verb == 'startUploadJob':
 		else:
-			pid = ''
-			xxx = 'keine shop-id'
-			print('// SKU: %s / IID: %s :: %s' % (sku, iid, xxx))
-		result.append((pid, iid, sku, xxx))
-	return result
+			url = 'https://{:s}'.format(url_bulkexchange)
+		return url
 
-def getsellerlist(t0, t1, connection):
-	# Abfrage erstellen & Übersicht anfordern
-	api = Trading(warnings=True, timeout=60)
-	api.execute('GetSellerList', {
-		'EndTimeFrom': t0, 'EndTimeTo': t1,
-		'Pagination':{'EntriesPerPage':200},
-		'GranularityLevel':'Coarse',
-		'OutputSelector':'PaginationResult'})
-	pages = int(api.response.reply.PaginationResult.TotalNumberOfPages)
-	total = int(api.response.reply.PaginationResult.TotalNumberOfEntries)
-	print('   Entries: {} :: Pages: {}'.format(total, pages))
+	def build_request_headers(self, verb):
+		headers = {
+			'Content-Type': self.config.get('content_type'),
+			'X-EBAY-SOA-SECURITY-TOKEN': self.config.get('token'),
+			'X-EBAY-SOA-OPERATION-NAME': verb}
+			#'X-EBAY-SOA-GLOBAL-ID': self.config.get('site-id'),
+			#'X-EBAY-REQUEST-DATA-FORMAT': self.config.get('request_encoding'),
+			#'X-EBAY-RESPONSE-DATA-FORMAT': self.config.get('response_encoding'),
+			#'X-EBAY-SOA-MESSAGE-PROTOCOL': self.config.get('message_protocol')}
+		if verb == 'uploadFile':
+			headers['X-EBAY-SOA-SERVICE-NAME'] = 'FileTransferService'
+		if verb == 'ReviseFixedPriceItem' or verb == 'ReviseInventoryStatus':
+			headers['X-EBAY-SOA-SERVICE-NAME'] = 'BulkDataExchangeService'
+		return headers
 
-	# konkrete Abfrage
-	options = {
-		'EndTimeFrom':t0,
-		'EndTimeTo':t1,
-		'Pagination':{'EntriesPerPage':200},
-		'GranularityLevel':'Coarse',
-		'OutputSelector':'ItemID,SKU,PaginationResult,ReturnedItemCountActual'}
+	def build_request_data(self, verb, data=None, verb_attrs=None):
+		xmlns = 'xmlns="http://www.ebay.com/marketplace/services"'
+		xmlns_sct = 'xmlns:sct="http://www.ebay.com/soaframework/common/types"'
+		xml = '<?xml version="1.0" encoding="utf-8"?>'
+		## createUploadJobRequest
+		if verb == 'createUploadJob':
+			xml += '<{}Request {}>'.format(verb, xmlns)
+			xml += '<uploadJobType>{}</uploadJobType>'.format(data) #.jobType)
+			xml += '<UUID>{}</UUID>'.format(self.uuid)
+			xml += '<fileType>{}</fileType>'.format(self.file_type)	# 'gzip'
+			xml += '</{}Request>'.format(verb)
 
-	page = 1
-	result = []
-	while page <= pages:
-		try:
-			options['Pagination']['PageNumber'] = page
-			with connection.cursor() as cursor:
-				result.extend(czekk_sellerlist(api, presta_skus, options, cursor))
-			connection.commit()
-			reply = api.response.reply
-			print('-- returned item count: {} :: page: {}'.format(
-				reply.ReturnedItemCountActual, page))
-		#except ConnectionError as e:
-		except Exception as e:
-			print(e)
-		page += 1
-	return result
-## << --------------------------
+		## uploadFileRequest
+		if verb == 'uploadFile':
+			xml += '<{}Request {} {}>'.format(verb, xmlns, xmlns_sct)
+			xml += '<taskReferenceId>{}</taskReferenceId>'.format(data.jobId) # BulkData.jobId
+			xml += '<fileReferenceId>{}</fileReferenceId>'.format(data.fileReferenceId) # BulkData.fileReferenceId
+			xml += '<fileFormat>{}</fileFormat>'.format(self.file_type)       # BulkData.file_type
+			xml += '<fileAttachment>'
+			xml += '<Data>{}</Data>'.format(data.bder_compressed)             # BulkData.bder_compressed
+			xml += '</fileAttachment>'
+			xml += '</{}Request>'.format(verb)
 
-class Counter:
-	def __init__(self, **kwargs):
-		for key in kwargs:
-			self.__dict__[key] = kwargs[key]
+		## startUploadJobRequest
+		if verb == 'startUploadJob':
+			xml += '<{}Request {}>'.format(verb, xmlns)
+			xml += '<jobId>{}</jobId>'.format(data.jobId)
+			xml += '</{}Request>'.format(verb)
 
-class EbaySellerList:
-	"""ebay 'GetSellerList' object for a given time period
-	
-	items = {'ItemID': 'SKU'}
-	"""
-	def __init__(self, **kwargs):
-		self._entries_per_page = 200
-		self.debug = kwargs.get('debug', False)
-		self._time_delta = kwargs.get('tdelta', 3)
-		self._time_from, self._time_to = ebay_timings(self._time_delta)
-		self._skus = None
-		self._shop = kwargs.get('shop', None)
-		if self._shop:
-			self._skus = self._shop.fetch_skus(active=True)
-		self._warnings = kwargs.get('warnings', False)
-		if self.debug:
-			self._warnings = True
-		self._timeout = kwargs.get('timeout', 60)
-		print('\n:: eBay-Artikel holen..')
-		self._api = Trading(warnings=self._warnings, timeout=self._timeout)
-		self._api.execute('GetSellerList', {
-			'EndTimeFrom': self._time_from, 'EndTimeTo': self._time_to,
-			'Pagination':{'EntriesPerPage': self._entries_per_page},
-			'GranularityLevel': 'Coarse',
-			'OutputSelector': 'PaginationResult'})
-		self._pages = int(self._api.response.reply.PaginationResult.TotalNumberOfPages)
-		self._total = int(self._api.response.reply.PaginationResult.TotalNumberOfEntries)
-		print('-- Entries: {} :: Pages: {}'.format(self._total, self._pages))
-		self._connection = sql_connect(sql_conf_ebay)
-		self._counter = Counter(n=0, r=0, x=0)
-		self._items = Item(ok=[], faulty=[])
-		self._items_process = {}
+		## getJobsRequest
+		if verb == 'getJobs':
+			xml += '<{}Request {}>'.format(verb, xmlns)
+			## options..
+			xml += '</{}Request>'.format(verb)
 
-	def _get_counter(self):
-		return self._counter
-	counter = property(_get_counter)
+		## getJobStatusRequest
+		if verb == 'getJobStatus':
+			xml += '<{}Request {}>'.format(verb, xmlns)
+			xml += '<jobId>{}</jobId>'.format(data.jobId)
+			xml += '</{}Request>'.format(verb)
 
-	def _get_items(self):
-		return self._items
-	items = property(_get_items)
+		## abortJobRequest
+		if verb == 'abortJob':
+			xml += '<{}Request {}>'.format(verb, xmlns)
+			xml += '<jobId>{}</jobId>'.format(data.jobId)
+			xml += '</{}Request>'.format(verb)
 
-	def _get_itemslist_ok(self):
-		return [[item.item_id, item.pid, item.sku, item.price, item.quantity,
-			item.delivery, item.xxx] for item in self._items.ok]
-	itemslist_ok = property(_get_itemslist_ok)
+		return xml
 
-	def _get_itemslist_faulty(self):
-		return [[item.item_id, item.pid, item.sku, item.price, item.quantity,
-			item.delivery, item.xxx] for item in self._items.faulty]
-	itemslist_faulty = property(_get_itemslist_faulty)
+	def _get_warnings(self):
+		warning_string = ''
+		if len(self._resp_body_warnings) > 0:
+			warning_string = '{:s}: {:s}'.format(self.verb, ', '.join(self._resp_body_warnings))
+		return warning_string
+	warnings = property(_get_warnings)
 
-	def _get_time_period(self):
-		return (self._time_from, self._time_to)
-	time_period = property(_get_time_period)
+	def _get_resp_body_errors(self):
+		if self._resp_body_errors and len(self._resp_body_errors) > 0:
+			return self._resp_body_errors
+		errors = []
+		warnings = []
+		resp_codes = []
 
-	def _get_time_delta(self):
-		return self._time_delta
-	time_delta = property(_get_time_delta)
+		if self.verb is None:
+			return errors
 
-	def _get_items(self):
-		return self._items
-	items = property(_get_items)
+		dom = self.response.dom()
+		if dom is None:
+			return errors
 
-	def _get_pages(self):
-		return self._pages
-	pages = property(_get_pages)
+		for e in dom.findall('error'):
+			eSeverity = None
+			eDomain = None
+			eMsg = None
+			eId = None
 
-	def _get_total(self):
-		return self._total
-	total = property(_get_total)
-
-	def fetch_items(self, page):
-		#n_try = 0
-		#max_tries = 3
-		items = Item(ok=[], faulty=[], ids={})
-		options = {
-			'EndTimeFrom': self._time_from,
-			'EndTimeTo': self._time_to,
-			'Pagination': {'EntriesPerPage': self._entries_per_page},
-			'GranularityLevel': 'Coarse',
-			'OutputSelector': 'ItemID,SKU,PaginationResult,ReturnedItemCountActual'}
-
-		def fetch_ids(options):
-			ids = {}
 			try:
-				self._api.execute('GetSellerList', options)
-				reply = self._api.response.reply
-				for item in reply.ItemArray.Item:
-					ids.update({item.get('ItemID'):item.get('SKU')})
-				if self.debug:
-					print('-- returned item count: {} :: page: {}'.format(
-						reply.ReturnedItemCountActual, page))
-			except Exception as e:
-				xxx = str(e)
-				if self.debug:
-					print('!! {:s} [page: {}]'.format(xxx, page))
-				raise e
-			return ids
-
-		options['Pagination']['PageNumber'] = page
-		items.ids = fetch_ids(options)
-		with self._connection.cursor() as cursor:
-			for iid in items.ids.keys():
-				sku = items.ids[iid]
-				try:
-					item = EbayItem(iid)
-					item.fetch_data(cursor)
-				except Exception as e:
-					xxx = str(e)
-					item = EbayItem(iid, sku=sku)
-					item.xxx = xxx
-					items.faulty.append(item)
-					print('!! {:s} [{:s}]: {:s}'.format(iid, sku, xxx))
-					self._counter.x += 1
-				else:
-					if sku == item.sku:
-						items.ok.append(item)
-						self._counter.n += 1
-					else:
-						xxx = 'Fehler bei Zuordnung'
-						item.xxx = xxx
-						items.faulty.append(item)
-						if self.debug:
-							print('<< {:s} [{:s}]: {:s}'.format(iid, sku, xxx))
-						self._counter.x += 1
-
-		self._items_process[page] = items
-		#return items
-
-	def process_items(self, page):
-		items = self._items_process.pop(page)
-		print(':  process items - page {:d}'.format(page))
-		if len(items.faulty) > 0:
-			print('   - faulty ones first..')
-			n = 0
-			with self._connection.cursor() as cursor:
-				for item in items.faulty:
-					try:
-						sku = items.ids[item.item_id]
-						pid = self._skus[sku]
-						if item.pid == pid:
-							item.fetch_data(cursor)
-							if len(item.data) <= 1:
-								iid = item.item_id
-								item = EbayItem(iid, pid=pid, sku=sku)
-								item.delivery = 0
-								item.price = 0
-								item.quantity = 0
-								item.set_data(cursor)
-							item._xxx = []
-							items.faulty.remove(item)
-							items.ok.append(item)
-							self._counter.n += 1
-							self._counter.x -= 1
-							n += 1
-					except Exception as e:
-						xxx = str(e)
-						self._items.faulty.append(item)
-						print('!! {:s} [{:s}]: {:s}'.format(item.item_id, sku, xxx))
-			print('-- {:d} korrigiert'.format(n))
-		print('   - the good ones..')
-		for item in items.ok:
+				eSeverity = e.findall('severity')[0].text
+			except IndexError:
+				pass
 			try:
-				shopitem = ShopItem(item.pid, self._shop)
-				delivery = 4
-				if shopitem.available == STR_DELIVER_LATE:
-					delivery = 15
-				quantity = shopitem.quantity
-				if quantity > 50:
-					quantity = 50
-				if quantity < 1:
-					quantity = 10
-					delivery = 15
-				item.delivery = delivery
-				item.price = calc_ebay_price(shopitem.price_retail)
-				item.quantity = quantity
-				rt = item.reviseType
-				if rt:
-					item.xxx = rt
-					self._counter.r += 1
-					if self.debug:
-						print('>> {:s} [{:s}]: reviseType: {:s}'.format(
-							item.item_id, item.sku, rt))
-				self._items.ok.append(item)
-			except Exception as e:
-				xxx = str(e)
-				item.xxx = xxx
-				self._items.faulty.append(item)
-				items.ok.remove(item)
-				self._counter.x += 1
-				self._counter.n -= 1
-				if self.debug:
-					print('!! {:s} [{:s}]: {:s}'.format(item.item_id, item.sku, xxx))
-		#return (items.ok, items.faulty)
+				eDomain = e.findall('domain')[0].text
+			except IndexError:
+				pass
+			try:
+				eMsg = e.findall('message')[0].text
+			except IndexError:
+				pass
+			try:
+				eId = e.findall('errorId')[0].text
+				if int(eId) not in resp_codes:
+					resp_codes.append(int(eId))
+			except IndexError:
+				pass
 
-class EbayItem(Item):
-	""" eBay item class
-	
-	keyword arguments:
-	item_id = eBay.ItemID *required*
-	pid = product ID / shop id_product
-	sku = item reference
-	price = eBay.Price
-	quantity = eBay.Quantity
-	delivery = eBay.DispatchTimeMax
-	#cursor = sql.cursor object
-	"""
-	def __init__(self, item_id, **kwargs):
-		super(EbayItem, self).__init__()
-		self.item_id = item_id
-		self._price = kwargs.get('price', None)
-		self._quantity = kwargs.get('quantity', None)
-		self._delivery = kwargs.get('delivery', None)	# DispatchTimeMax
-		self.pid = kwargs.get('pid', '')
-		self.sku = kwargs.get('sku', '')
-		self._data = {'ItemID': self.item_id}
+			msg = 'Domain: {:s}, Severity: {:s}, errorId: {:s}, {:s}'.format(
+				eDomain, eSeverity, eId, eMsg)
 
-	def _get_data(self):
-		return self._data
-	data = property(_get_data)
-
-	def _get_reviseData(self):
-		return dict2xml(self._data)
-	reviseData = property(_get_reviseData)
-
-	def _get_reviseType(self):
-		if len(self._data) > 1:
-			if 'DispatchTimeMax' in self._data.keys():
-				return 'FixedPriceItem'
+			if eSeverity == 'Warning':
+				warnings.append(msg)
 			else:
-				return 'InventoryStatus'
+				errors.append(msg)
+
+		self._resp_body_warnings = warnings
+		self._resp_body_errors = errors
+		self._resp_codes = resp_codes
+
+		if self.config.get('warnings') and len(warnings) > 0:
+			log.warn('{:s}: {:s}\n\n'.format(self.verb, '\n'.join(warnings)))
+
+		try:
+			if self.response.reply.ack == 'Success' and len(errors) > 0 and self.config.get('errors'):
+				log.error('{:s}: {:s}\n\n'.format(self.verb, '\n'.join(errors)))
+			elif len(errors) > 0:
+				if self.config.get('errors'):
+					log.error('{:s}: {:s}\n\n'.format(self.verb, '\n'.join(errors)))
+				return errors
+		except AttributeError:
+			pass
+
+		return []
+
+class BulkData:
+	"""collection of upload job data
+
+	ReviseFixedPriceItem- / ReviseInventoryStatus-Data for
+	inserting into BulkDataExchangeRequest
+	"""
+	def __init__(self, **kwargs):
+		self._bdes_list = ['ReviseFixedPriceItem', 'ReviseInventoryStatus']
+		self._data = Item(**{key: [] for key in self._bdes_list})
+		self.fileReferenceId = kwargs.get('fileReferenceId', None)
+		self.jobId = kwargs.get('jobId', None)
+		self._bder = None
+		self._reviseType = None
+		self.version = kwargs.get('version', api_version)
+		self.site_id = kwargs.get('site_id', 77)
+
+	def _get_bder(self):
+		return self._bder
+	bder = property(_get_bder)
+
+	def _get_bder_compressed(self):
+		if self._bder:
+			return b64encode(gzip.compress(to_bytes(self._bder)))
+	bder_compressed = property(_get_bder_compressed)
+
+	def add_item(self, item):
+		# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
+		if item.reviseType:
+			key = 'Revise{:s}'.format(item.reviseType)
+			self._data.__dict__[key].append(item)
+
+	def add_items(self, items):
+		for item in items:
+			self.add_item(item)
+
+	def create_bder(self, verb, **kwargs):
+		"""create the BulkDataExchangeRequests content"""
+		if verb in self._bdes_list:
+			self._reviseType = verb
+			xmlns = 'xmlns="urn:ebay:apis:eBLBaseComponents"'
+			xml = '<?xml version="1.0" encoding="utf-8"?>' # --> filedata
+			xml += '<BulkDataExchangeRequests>'
+			xml += '<Header>'
+			xml += '<Version>{}</Version>'.format(self.version)
+			xml += '<SiteID>{}</SiteID>'.format(self.site_id)
+			xml += '</Header>'
+			xml += '<{}Request {}><Version>{}</Version>'.format(verb, xmlns, self.version)
+			data = self._data.__dict__[verb]
+			for item in data:
+				# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
+				if item.reviseType == 'FixedPriceItem':
+					xml += '<Item>'
+					xml += item.reviseData
+					xml += '</Item>'
+				else:
+					xml += '\n<InventoryStatus>'
+					xml += item.reviseData
+					xml += '</InventoryStatus>'
+			xml += '</{}Request>'.format(verb)
+			xml += '</BulkDataExchangeRequests>'           # <-- filedata
 		else:
-			return None
-	reviseType = property(_get_reviseType)
-
-	def _get_delivery(self):
-		return self._delivery
-	def _set_delivery(self, value):
-		if self._delivery != value:
-			self._delivery = value
-			self._data.update({'DispatchTimeMax': self._delivery})
-	delivery = property(_get_delivery, _set_delivery)
-
-	def _get_price(self):
-		return self._price
-	def _set_price(self, value):
-		if self._price != value:
-			self._price = value
-			self._data.update({'StartPrice': self._price})
-	price = property(_get_price, _set_price)
-
-	def _get_quantity(self):
-		return self._quantity
-	def _set_quantity(self, value):
-		if self._quantity != value:
-			self._quantity = value
-			self._data.update({'Quantity': self._quantity})
-	quantity = property(_get_quantity, _set_quantity)
-
-	def fetch_data(self, cursor):
-		sql = 'SELECT id_product, reference, price, quantity, delivery FROM ebay_items WHERE ebay_id={}'
-		cursor.execute(sql.format(self.item_id))
-		self.pid, self.sku, self._price, self._quantity, self._delivery = cursor.fetchone()
-
-	def update_data(self, cursor):
-		"""update data in the ebay_items db"""
-		sql = 'UPDATE ebay_items SET id_product, reference, price, quantity, delivery WHERE ebay_id={}'
-		cursor.execute(sql.format(self.item_id))
-
-	def insert_data(self, cursor):
-		sql = 'INSERT INTO ebay_items ...'
-		cursor.execute(sql.format(**values))
+			raise NotImplementedError
+		self._bder = xml
+		#return xml
