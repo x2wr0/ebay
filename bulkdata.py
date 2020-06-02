@@ -5,6 +5,7 @@
 
 import gzip
 from base64 import standard_b64encode as b64encode
+#from base64 import urlsafe_b64encode as b64encode
 
 from libdrebo.utils import to_bytes, Item
 
@@ -44,6 +45,7 @@ class BulkData:
 		self._data = Item(**{key: [] for key in self._bdes_list})
 		self.fileReferenceId = kwargs.get('fileReferenceId', None)
 		self.jobId = kwargs.get('jobId', None)
+		self.jobType = kwargs.get('jobType', None)
 		self._bder = None
 		self._reviseType = None
 		self.version = kwargs.get('version', api_version)
@@ -70,30 +72,25 @@ class BulkData:
 		for item in items:
 			self.add_item(item)
 
-	def create_bder(self, verb, **kwargs):
+	def create_bder(self):#, verb, **kwargs):
 		"""create the BulkDataExchangeRequests content"""
+		verb = self.jobType
 		if verb in self._bdes_list:
-			self._reviseType = verb
 			xmlns = 'xmlns="urn:ebay:apis:eBLBaseComponents"'
 			xml = '<?xml version="1.0" encoding="utf-8"?>' # --> filedata
 			xml += '<BulkDataExchangeRequests>'
-			xml += '<Header>'
-			xml += '<Version>{}</Version>'.format(self.version)
-			xml += '<SiteID>{}</SiteID>'.format(self.site_id)
-			xml += '</Header>'
-			xml += '<{}Request {}><Version>{}</Version>'.format(verb, xmlns, self.version)
+			xml += '<Header><Version>{}</Version>'.format(self.version)
+			xml += '<SiteID>{}</SiteID></Header>'.format(self.site_id)
+			if self.jobType == 'ReviseFixedPriceItem':
+				xml_enclosure = '<Item>{}</Item>'
+			if self.jobType == 'ReviseInventoryStatus':
+				xml_enclosure = '<InventoryStatus>{}</InventoryStatus>'
 			data = self._data.__dict__[verb]
 			for item in data:
+				xml += '<{}Request {}><Version>{}</Version>'.format(verb, xmlns, self.version)
 				# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
-				if item.reviseType == 'FixedPriceItem':
-					xml += '<Item>'
-					xml += item.reviseData
-					xml += '</Item>'
-				else:
-					xml += '\n<InventoryStatus>'
-					xml += item.reviseData
-					xml += '</InventoryStatus>'
-			xml += '</{}Request>'.format(verb)
+				xml += xml_enclosure.format(item.reviseData)
+				xml += '</{}Request>'.format(verb)
 			xml += '</BulkDataExchangeRequests>'           # <-- filedata
 		else:
 			raise NotImplementedError

@@ -98,7 +98,7 @@ class Connection(BaseConnection):
 		## startUploadJobRequest
 		if verb == 'startUploadJob':
 			xml += '<{}Request {}>'.format(verb, xmlns)
-			xml += '<UUID>{}</UUID>'.format(self.uuid)
+			#xml += '<UUID>{}</UUID>'.format(self.uuid)
 			xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
 			xml += '</{}Request>'.format(verb)
 
