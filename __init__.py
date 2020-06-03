@@ -52,7 +52,6 @@ class Connection(BaseConnection):
 	def build_request_url(self, verb):
 		if verb == 'uploadFile':
 			url = 'https://{:s}'.format(url_filetransfer)
-		#if verb == 'createUploadJob' or verb == 'startUploadJob':
 		else:
 			url = 'https://{:s}'.format(url_bulkexchange)
 		return url

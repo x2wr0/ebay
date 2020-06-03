@@ -10,6 +10,7 @@ api=Merchant(debug=False)
 
 job_ok = False
 job_type = 'ReviseInventoryStatus'
+#job_type = 'ReviseFixedPriceItem'
 
 print('\n:: jobType: %s..' % job_type)
 api.execute('getJobs')

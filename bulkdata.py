@@ -7,6 +7,7 @@ import gzip
 from base64 import standard_b64encode as b64encode
 #from base64 import urlsafe_b64encode as b64encode
 
+from . import api_version
 from libdrebo.utils import to_bytes, Item
 
 
@@ -31,8 +32,6 @@ class Item:
 	xxx = property(_get_xxx, _set_xxx)
 """
 
-api_version = 1149
-
 
 class BulkData:
 	"""collection of upload job data
@@ -43,6 +42,7 @@ class BulkData:
 	def __init__(self, **kwargs):
 		self._bdes_list = ['ReviseFixedPriceItem', 'ReviseInventoryStatus']
 		self._data = Item(**{key: [] for key in self._bdes_list})
+		#self._data = []
 		self.fileReferenceId = kwargs.get('fileReferenceId', None)
 		self.jobId = kwargs.get('jobId', None)
 		self.jobType = kwargs.get('jobType', None)
@@ -81,9 +81,9 @@ class BulkData:
 			xml += '<BulkDataExchangeRequests>'
 			xml += '<Header><Version>{}</Version>'.format(self.version)
 			xml += '<SiteID>{}</SiteID></Header>'.format(self.site_id)
-			if self.jobType == 'ReviseFixedPriceItem':
+			if verb == 'ReviseFixedPriceItem':
 				xml_enclosure = '<Item>{}</Item>'
-			if self.jobType == 'ReviseInventoryStatus':
+			if verb == 'ReviseInventoryStatus':
 				xml_enclosure = '<InventoryStatus>{}</InventoryStatus>'
 			data = self._data.__dict__[verb]
 			for item in data:
@@ -96,3 +96,4 @@ class BulkData:
 			raise NotImplementedError
 		self._bder = xml
 		#return xml
+	
