@@ -44,17 +44,19 @@ class Item:
 
 
 ebay_strftime = lambda t: strftime(EBAY_STR_FORMAT_TIME, t)
+
 def ebay_timings(delta):
 	now = datetime.now()
 	then = now + relativedelta(months=delta)
 	now = datetime.timetuple(now)
 	then = datetime.timetuple(then)
-	return (ebay_strftime(now), ebay_strftime(then))
+	return ebay_strftime(now), ebay_strftime(then)
 
 # dec = lambda s: decimal.Decimal(s)
 # str2dec = lambda s: dec(s.replace(',','.'))
 # dec2str = lambda d: str(d)
 # QQ = dec('.01'), QP = 5
+
 def calc_ebay_price(price, q=QQ):
 	with decimal.localcontext() as context:
 		context.prec = price.adjusted() + QP
@@ -96,7 +98,7 @@ class EbaySellerList:
 		self._api = Trading(warnings=self._warnings, timeout=self._timeout)
 		self._api.execute('GetSellerList', {
 			'EndTimeFrom': self._time_from, 'EndTimeTo': self._time_to,
-			'Pagination':{'EntriesPerPage': self._entries_per_page},
+			'Pagination': {'EntriesPerPage': self._entries_per_page},
 			'GranularityLevel': 'Coarse',
 			'OutputSelector': 'PaginationResult'})
 		self._pages = int(self._api.response.reply.PaginationResult.TotalNumberOfPages)
@@ -126,7 +128,7 @@ class EbaySellerList:
 	itemslist_faulty = property(_get_itemslist_faulty)
 
 	def _get_time_period(self):
-		return (self._time_from, self._time_to)
+		return self._time_from, self._time_to
 	time_period = property(_get_time_period)
 
 	def _get_time_delta(self):
@@ -162,7 +164,7 @@ class EbaySellerList:
 				self._api.execute('GetSellerList', options)
 				reply = self._api.response.reply
 				for item in reply.ItemArray.Item:
-					ids.update({item.get('ItemID'):item.get('SKU')})
+					ids.update({item.get('ItemID'): item.get('SKU')})
 				if self.debug:
 					print('-- returned item count: {} :: page: {}'.format(
 						reply.ReturnedItemCountActual, page))
@@ -269,6 +271,7 @@ class EbaySellerList:
 					print('!! {:s} [{:s}]: {:s}'.format(item.item_id, item.sku, xxx))
 		#return (items.ok, items.faulty)
 
+
 class EbayItem(Item):
 	""" eBay item class
 	
@@ -286,7 +289,7 @@ class EbayItem(Item):
 		self.item_id = item_id
 		self._price = kwargs.get('price', None)
 		self._quantity = kwargs.get('quantity', None)
-		self._delivery = kwargs.get('delivery', None)	# DispatchTimeMax
+		self._delivery = kwargs.get('delivery', None)  # DispatchTimeMax
 		self.pid = kwargs.get('pid', '')
 		self.sku = kwargs.get('sku', '')
 		self._data = {'ItemID': self.item_id}
@@ -334,6 +337,7 @@ class EbayItem(Item):
 	quantity = property(_get_quantity, _set_quantity)
 
 	def fetch_data(self, cursor):
+		"""fetch data from the ebay_items db"""
 		sql = 'SELECT id_product, reference, price, quantity, delivery FROM ebay_items WHERE ebay_id={}'
 		cursor.execute(sql.format(self.item_id))
 		self.pid, self.sku, self._price, self._quantity, self._delivery = cursor.fetchone()
@@ -343,6 +347,8 @@ class EbayItem(Item):
 		sql = 'UPDATE ebay_items SET id_product, reference, price, quantity, delivery WHERE ebay_id={}'
 		cursor.execute(sql.format(self.item_id))
 
+	'''
 	def insert_data(self, cursor):
 		sql = 'INSERT INTO ebay_items ...'
 		cursor.execute(sql.format(**values))
+	'''

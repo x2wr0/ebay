@@ -75,45 +75,45 @@ class Connection(BaseConnection):
 		xmlns = 'xmlns="http://www.ebay.com/marketplace/services"'
 		xmlns_sct = 'xmlns:sct="http://www.ebay.com/soaframework/common/types"'
 		xml = '<?xml version="1.0" encoding="utf-8"?>'
-		## createUploadJobRequest
+		# createUploadJobRequest
 		if verb == 'createUploadJob':
 			xml += '<{}Request {}>'.format(verb, xmlns)
-			xml += '<uploadJobType>{}</uploadJobType>'.format(data) # '<jobType>'
+			xml += '<uploadJobType>{}</uploadJobType>'.format(data)  # '<jobType>'
 			xml += '<UUID>{}</UUID>'.format(self.uuid)
-			xml += '<fileType>{}</fileType>'.format(self.file_type)	# 'gzip'
+			xml += '<fileType>{}</fileType>'.format(self.file_type)  # 'gzip'
 			xml += '</{}Request>'.format(verb)
 
-		## uploadFileRequest
+		# uploadFileRequest
 		if verb == 'uploadFile':
 			xml += '<{}Request {} {}>'.format(verb, xmlns, xmlns_sct)
-			xml += '<taskReferenceId>{}</taskReferenceId>'.format(data.jobId) # BulkData.jobId
-			xml += '<fileReferenceId>{}</fileReferenceId>'.format(data.fileReferenceId) # BulkData.fileReferenceId
+			xml += '<taskReferenceId>{}</taskReferenceId>'.format(data.jobId)  # BulkData.jobId
+			xml += '<fileReferenceId>{}</fileReferenceId>'.format(data.fileReferenceId)  # BulkData.fileReferenceId
 			xml += '<fileFormat>{}</fileFormat>'.format(self.file_type)
 			xml += '<fileAttachment>'
-			xml += '<Data>{}</Data>'.format(data.bder_compressed)             # BulkData.bder_compressed
+			xml += '<Data>{}</Data>'.format(data.bder_compressed)              # BulkData.bder_compressed
 			xml += '</fileAttachment>'
 			xml += '</{}Request>'.format(verb)
 
-		## startUploadJobRequest
+		# startUploadJobRequest
 		if verb == 'startUploadJob':
 			xml += '<{}Request {}>'.format(verb, xmlns)
 			#xml += '<UUID>{}</UUID>'.format(self.uuid)
 			xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
 			xml += '</{}Request>'.format(verb)
 
-		## getJobsRequest
+		# getJobsRequest
 		if verb == 'getJobs':
 			xml += '<{}Request {}>'.format(verb, xmlns)
-			## options..
+			# options..
 			xml += '</{}Request>'.format(verb)
 
-		## getJobStatusRequest
+		# getJobStatusRequest
 		if verb == 'getJobStatus':
 			xml += '<{}Request {}>'.format(verb, xmlns)
 			xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
 			xml += '</{}Request>'.format(verb)
 
-		## abortJobRequest
+		# abortJobRequest
 		if verb == 'abortJob':
 			xml += '<{}Request {}>'.format(verb, xmlns)
 			xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId

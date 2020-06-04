@@ -1,12 +1,14 @@
-from libdrebo.shop import Shop, ShopProfile
-from . import Connection as Merchant
-from .bulkdata import BulkData
-from .accessories import EbayItem, EbaySellerList
+#! -*- coding: utf-8 -*-
 
+from libdrebo.shop import Shop, ShopProfile
+
+from . import Connection as Merchant
+from .accessories import EbaySellerList
+from .bulkdata import BulkData
 
 shop = Shop(ShopProfile('ps'))
 sellerlist = EbaySellerList(shop=shop, debug=True)
-api=Merchant(debug=False)
+api = Merchant(debug=False)
 
 job_ok = False
 job_type = 'ReviseInventoryStatus'

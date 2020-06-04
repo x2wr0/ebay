@@ -96,4 +96,3 @@ class BulkData:
 			raise NotImplementedError
 		self._bder = xml
 		#return xml
-	
