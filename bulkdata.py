@@ -4,8 +4,8 @@
 
 
 import gzip
-#from base64 import standard_b64encode as b64encode
-from base64 import urlsafe_b64encode as b64encode
+from base64 import standard_b64encode as b64encode
+#from base64 import urlsafe_b64encode as b64encode
 
 from . import api_version
 # from libdrebo.utils import to_bytes, Item
