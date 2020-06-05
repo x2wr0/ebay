@@ -13,7 +13,7 @@ from ebaysdk.config import Config
 url_filetransfer = 'storage.ebay.com/FileTransferService'
 url_bulkexchange = 'webservices.ebay.com/BulkDataExchangeService'
 
-api_version = 1149
+api_version = 1113
 
 
 class Connection(BaseConnection):

@@ -8,10 +8,9 @@ from base64 import standard_b64encode as b64encode
 #from base64 import urlsafe_b64encode as b64encode
 
 from . import api_version
-from libdrebo.utils import to_bytes, Item
+# from libdrebo.utils import to_bytes, Item
 
 
-"""
 def to_bytes(bytes_or_str):
 	if isinstance(bytes_or_str, str):
 		value = bytes_or_str.encode('utf-8')
@@ -30,7 +29,6 @@ class Item:
 	def _set_xxx(self, xxx):
 		self._xxx.append(xxx)
 	xxx = property(_get_xxx, _set_xxx)
-"""
 
 
 class BulkData:
@@ -86,10 +84,14 @@ class BulkData:
 			if verb == 'ReviseInventoryStatus':
 				xml_enclosure = '<InventoryStatus>{}</InventoryStatus>'
 			data = self._data.__dict__[verb]
+			n = 0
 			for item in data:
 				xml += '<{}Request {}><Version>{}</Version>'.format(verb, xmlns, self.version)
 				# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
-				xml += xml_enclosure.format(item.reviseData)
+				xml_n = ''
+				while n % 4 > ...:
+					xml_n += xml_enclosure(item.reviseData)
+				xml += xml_enclosure.format(xml_n)
 				xml += '</{}Request>'.format(verb)
 			xml += '</BulkDataExchangeRequests>'           # <-- filedata
 		else:
