@@ -56,7 +56,8 @@ class BulkData:
 
 	def _get_bder_compressed(self):
 		if self._bder:
-			return b64encode(gzip.compress(to_bytes(self._bder), 5))
+			#return b64encode(gzip.compress(to_bytes(self._bder)))
+			return b64encode(gzip.compress(self._bder.encode()))
 	bder_compressed = property(_get_bder_compressed)
 
 	def add_item(self, item):
