@@ -1,9 +1,8 @@
 #! -*- coding: utf-8 -*-
 
-# o5/2o2o: 0.2.4.7             :: wro-guys
+# o5/2o2o: 0.24.7              :: wro-guys
 
 
-import gzip
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import decimal

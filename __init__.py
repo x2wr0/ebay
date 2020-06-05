@@ -1,6 +1,6 @@
 #! -*- coding: utf-8 -*-
 
-# o3/2o2o: 0.1   
+# o5/2o2o: 0.24.7              :: wro-guys
 
 
 from uuid import uuid4

@@ -1,6 +1,6 @@
 #! -*- coding: utf-8 -*-
 
-# o5/2o2o: 0.1                 :: wro-guys
+# o5/2o2o: 0.24.7              :: wro-guys
 
 
 import gzip
@@ -18,9 +18,10 @@ def to_bytes(bytes_or_str):
 		value = bytes_or_str
 	return value
 
+
 class Item:
 	def __init__(self, **kwargs):
-		self._xxx = []	# Fehler Log
+		self._xxx = []   # Fehler Log
 		for key in kwargs:
 			self.__dict__[key] = kwargs[key]
 
@@ -70,30 +71,37 @@ class BulkData:
 		for item in items:
 			self.add_item(item)
 
-	def create_bder(self):#, verb, **kwargs):
+	def create_bder(self, **kwargs):
 		"""create the BulkDataExchangeRequests content"""
-		verb = self.jobType
+		verb = kwargs.get('jobType', self.jobType)
+		xml_enclosure = '<>{}</>'
 		if verb in self._bdes_list:
-			xmlns = 'xmlns="urn:ebay:apis:eBLBaseComponents"'
-			xml = '<?xml version="1.0" encoding="utf-8"?>' # --> filedata
-			xml += '<BulkDataExchangeRequests>'
-			xml += '<Header><Version>{}</Version>'.format(self.version)
-			xml += '<SiteID>{}</SiteID></Header>'.format(self.site_id)
 			if verb == 'ReviseFixedPriceItem':
 				xml_enclosure = '<Item>{}</Item>'
 			if verb == 'ReviseInventoryStatus':
 				xml_enclosure = '<InventoryStatus>{}</InventoryStatus>'
+			xmlns = 'xmlns="urn:ebay:apis:eBLBaseComponents"'
+			xml = '<?xml version="1.0" encoding="utf-8"?>'   # --> filedata
+			xml += '<BulkDataExchangeRequests>'
+			xml += '<Header><Version>{}</Version>'.format(self.version)
+			xml += '<SiteID>{}</SiteID></Header>'.format(self.site_id)
 			data = self._data.__dict__[verb]
+			# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
+			xml_request_open = '<{}Request {}><Version>{}</Version>'.format(verb, xmlns, self.version)
+			xml_request_close = '</{}Request>'.format(verb)
 			n = 0
-			for item in data:
-				xml += '<{}Request {}><Version>{}</Version>'.format(verb, xmlns, self.version)
-				# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
-				xml_n = ''
-				while n % 4 > ...:
-					xml_n += xml_enclosure(item.reviseData)
-				xml += xml_enclosure.format(xml_n)
-				xml += '</{}Request>'.format(verb)
-			xml += '</BulkDataExchangeRequests>'           # <-- filedata
+			m = 4
+			items = [xml_enclosure.format(item.reviseData) for item in data]
+			last = len(items) - 1
+			for item in items:
+				if n % m == 0:
+					xml += xml_request_open
+				if n % m >= 0:
+					xml += item
+				if n % m == m-1 or n == last:
+					xml += xml_request_close
+				n += 1
+			xml += '</BulkDataExchangeRequests>'             # <-- filedata
 		else:
 			raise NotImplementedError
 		self._bder = xml
