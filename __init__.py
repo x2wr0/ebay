@@ -58,7 +58,7 @@ class Connection(BaseConnection):
 
 	def build_request_headers(self, verb):
 		headers = {
-			'Content-Type': self.config.get('content_type'),
+			#'Content-Type': self.config.get('content_type'),
 			'X-EBAY-SOA-SECURITY-TOKEN': self.config.get('token'),
 			'X-EBAY-SOA-OPERATION-NAME': verb}
 			#'X-EBAY-SOA-GLOBAL-ID': self.config.get('site-id'),
