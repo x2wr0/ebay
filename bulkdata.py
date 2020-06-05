@@ -90,15 +90,15 @@ class BulkData:
 			xml_request_open = '<{}Request {}><Version>{}</Version>'.format(verb, xmlns, self.version)
 			xml_request_close = '</{}Request>'.format(verb)
 			n = 0
-			m = 4
+			m0 = 4
+			m1 = m0 - 1
 			items = [xml_enclosure.format(item.reviseData) for item in data]
 			last = len(items) - 1
 			for item in items:
-				if n % m == 0:
+				if n % m0 == 0:
 					xml += xml_request_open
-				if n % m >= 0:
-					xml += item
-				if n % m == m-1 or n == last:
+				xml += item
+				if n % m0 == m1 or n == last:
 					xml += xml_request_close
 				n += 1
 			xml += '</BulkDataExchangeRequests>'             # <-- filedata
