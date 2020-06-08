@@ -4,19 +4,12 @@
 
 
 import gzip
-from base64 import standard_b64encode as b64encode
+from base64 import encodebytes as b64encode
+#from base64 import standard_b64encode as b64encode
 #from base64 import urlsafe_b64encode as b64encode
 
 from . import api_version
-# from libdrebo.utils import to_bytes, Item
-
-
-def to_bytes(bytes_or_str):
-	if isinstance(bytes_or_str, str):
-		value = bytes_or_str.encode('utf-8')
-	else:
-		value = bytes_or_str
-	return value
+from libdrebo.utils import php_b64encode_gz
 
 
 class Item:
@@ -56,8 +49,7 @@ class BulkData:
 
 	def _get_bder_compressed(self):
 		if self._bder:
-			#return b64encode(gzip.compress(to_bytes(self._bder)))
-			return b64encode(gzip.compress(self._bder.encode()))
+			return b64encode(gzip.compress(self._bder.encode())).decode()
 	bder_compressed = property(_get_bder_compressed)
 
 	def add_item(self, item):
@@ -78,18 +70,18 @@ class BulkData:
 		xml_enclosure = '<>{}</>'
 		if verb in self._bdes_list:
 			if verb == 'ReviseFixedPriceItem':
-				xml_enclosure = '<Item>{}</Item>'
+				xml_enclosure = '<Item>{}</Item>\n'
 			if verb == 'ReviseInventoryStatus':
-				xml_enclosure = '<InventoryStatus>{}</InventoryStatus>'
+				xml_enclosure = '<InventoryStatus>{}</InventoryStatus>\n'
 			xmlns = 'xmlns="urn:ebay:apis:eBLBaseComponents"'
-			xml = '<?xml version="1.0" encoding="utf-8"?>'   # --> filedata
-			xml += '<BulkDataExchangeRequests>'
-			xml += '<Header><Version>{}</Version>'.format(self.version)
-			xml += '<SiteID>{}</SiteID></Header>'.format(self.site_id)
+			xml = '<?xml version="1.0" encoding="utf-8"?>\n'   # --> filedata
+			xml += '<BulkDataExchangeRequests>\n'
+			xml += '<Header>\n<Version>{}</Version>\n'.format(self.version)
+			xml += '<SiteID>{}</SiteID>\n</Header>\n'.format(self.site_id)
 			data = self._data.__dict__[verb]
 			# TODO: generalize "revise"Type/Data. could be e.g. AddItem..
-			xml_request_open = '<{}Request {}><Version>{}</Version>'.format(verb, xmlns, self.version)
-			xml_request_close = '</{}Request>'.format(verb)
+			xml_request_open = '<{}Request {}>\n<Version>{}</Version>\n'.format(verb, xmlns, self.version)
+			xml_request_close = '</{}Request>\n'.format(verb)
 			n = 0
 			m0 = 4
 			m1 = m0 - 1
