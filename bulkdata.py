@@ -5,24 +5,26 @@
 
 import gzip
 from base64 import encodebytes as b64encode
-#from base64 import standard_b64encode as b64encode
-#from base64 import urlsafe_b64encode as b64encode
+# from base64 import standard_b64encode as b64encode
+# from base64 import urlsafe_b64encode as b64encode
 
 from . import api_version
-from libdrebo.utils import php_b64encode_gz
 
+try:
+	from libdrebo.utils import Item
+except ImportError:
+	class Item:
+		def __init__(self, **kwargs):
+			self._xxx = []   # Fehler Log
+			for key in kwargs:
+				self.__dict__[key] = kwargs[key]
 
-class Item:
-	def __init__(self, **kwargs):
-		self._xxx = []   # Fehler Log
-		for key in kwargs:
-			self.__dict__[key] = kwargs[key]
+		def _get_xxx(self):
+			return ' - '.join(self._xxx)
 
-	def _get_xxx(self):
-		return ' - '.join(self._xxx)
-	def _set_xxx(self, xxx):
-		self._xxx.append(xxx)
-	xxx = property(_get_xxx, _set_xxx)
+		def _set_xxx(self, xxx):
+			self._xxx.append(xxx)
+		xxx = property(_get_xxx, _set_xxx)
 
 
 class BulkData:

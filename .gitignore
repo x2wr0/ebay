@@ -111,4 +111,5 @@ dmypy.json
 
 ## "personal stuff"..
 stuff/
+.idea/
 #testebay.py
