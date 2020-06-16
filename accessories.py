@@ -28,6 +28,13 @@ str2dec = lambda s: dec(s.replace(',','.'))
 dec2str = lambda d: str(d)
 QQ = dec('.01'), QP = 5
 
+sql_conf_ebay = {
+    'host': conf.get('host'),
+    'user': conf.get('user'),
+    'db': conf.get('db'),
+    'password': conf.get('password'),
+    'charset': conf.get('charset', fallback='utf8')}
+
 def sql_connect(conf):
     return pymysql.connect(**conf)
 
@@ -62,7 +69,7 @@ def calc_ebay_price(price, q=QQ):
     return price_ebay.quantize(q)
 
 
-def ebay_retrieve_ids(connection):
+def ebay_retrieve_pids(connection):
     """return ebay_id, id_product"""
     with connection.cursor() as cursor:
         sql = 'SELECT id_product, ebay_id FROM ebay_items'
@@ -76,7 +83,7 @@ class Counter:
             self.__dict__[key] = kwargs[key]
 
 
-class EbaySellerListNew:
+class EbaySellerList:
     """ebay 'GetSellerList' object for a given time period"""
 
     def __init__(self, **kwargs):
@@ -86,39 +93,148 @@ class EbaySellerListNew:
             self._warnings = True
         time_from, time_to = ebay_timings(3)  # 3 months
         self.options = {'EndTimeFrom': time_from, 'EndTimeTo': time_to,
-                        'Pagination': {'EntriesPerPage': 200},
+                        'Pagination': {'EntriesPerPage': 200},  # 'PageNumber': 1},
                         'GranularityLevel': 'Fine',
-                        'OutputSelector': 'ItemID, SKU, Quantity, QuantitySold, StartPrice,'
-                                          'PaginationResult, PageNumber, ReturnedItemCountActual'}
+                        'OutputSelector': 'ItemID,SKU,Quantity,QuantitySold,StartPrice,MaxDispatchTime'
+                                          'PaginationResult,ReturnedItemCountActual,VATDetails'}
+        self.items = []
+        self.number_pages = 0
+        self.number_entries = 0
         self.api = Trading(warnings=self._warnings, timeout=60)
+        self._verb = 'GetSellerList'
 
-    def fetch(self):
-        def append(items, items_list):
-            for item in items:
-                items_list.append({'ItemID': item.ItemID, 'SKU': item.SKU,
-                                   'Quantity': int(item.Quantity) - int(item.SellingStatus.QuantitySold),
-                                   'StartPrice': dec(item.StartPrice.value)})
+    # helper method for self.fetch_items_*()
+    @staticmethod
+    def _append_items(items_array):
+        items_list = []
+        for item in items_array:
+            try:
+                items_list.append(EbayItem(ItemID=item.ItemID, SKU=item.SKU,
+                                           Quantity=int(item.Quantity) - int(item.SellingStatus.QuantitySold),
+                                           StartPrice=dec(item.StartPrice.value),
+                                           VATPercent=dec(item.VATDetails.VATPercent),
+                                           MaxDispatchTime=int(item.MaxDispatchTime)))
+            except Exception as e:
+                print('!! Error occurred [id: {}]: {}'.format(item.ItemID, str(e)))
+        return items_list
 
-        options = self.options
-        self.api.execute('GetSellerList', options)
+    def fetch_items_first(self, options=None):
+        if options:
+            options = options
+        else:
+            options = self.options
+        self.items = []
+        self.api.execute(self._verb, options)
         if self.api.response.reply.Ack == 'Success':
             self.number_entries = int(self.api.response.reply.PaginationResult.TotalNumberOfEntries)
             self.number_pages = int(self.api.response.reply.PaginationResult.TotalNumberOfPages)
-            page = int(self.api.response.reply.PageNumber)   # page = 1
-            self.items = []
-            append(self.api.response.reply.ItemArray.Item, self.items)
+            self.items.extend(self._append_items(self.api.response.reply.ItemArray.Item))
 
-            options['OutputSelector'] = 'ItemID, SKU, Quantity, QuantitySold, StartPrice'
+    def fetch_items_page(self, page, options=None):
+        if options:
+            options = options
+        else:
+            options = self.options
+        options['Pagination']['PageNumber'] = page
+        self.api.execute(self._verb, options)
+        if self.api.response.reply.Ack == 'Success':
+            self.items.extend(self._append_items(self.api.response.reply.ItemArray.Item))
+
+    def fetch_items(self):
+        self.fetch_items_first()  # -> page = 1
+        page = 2
+        options = self.options
+        options['OutputSelector'] = 'ItemID,SKU,Quantity,QuantitySold,StartPrice,MaxDispatchTime,VATDetails'
+        while page <= self.number_pages:
+            options['Pagination']['PageNumber'] = page
+            self.fetch_items_page(page, options)
             page += 1
-            while page <= self.number_pages:
-                options['Pagination']['PageNumber'] = page
-                self.api.execute('GetSellerList', options)
-                append(self.api.response.reply.ItemArray.Item, self.items)
-                page += 1
+
+    def update_timing(self):
+        time_from, time_to = ebay_timings(3)
+        self.options['EndTimeFrom'] = time_from
+        self.options['EndTimeTo'] = time_to
 
 
-# Classics ------------------------------
-class EbaySellerList:
+class EbayItem(Item):
+    """eBay item class"""
+
+    def __init__(self, **kwargs):
+        self._keys = ('ItemID', 'StartPrice', 'Quantity', 'DispatchMaxTime', 'SKU', 'VATPercent')
+        self._data = data = {}
+        for key in self._keys:
+            if key in kwargs:
+                data[key] = kwargs.get(key)
+                del (kwargs[key])
+        super(EbayItem, self).__init__(_data=data, **kwargs)
+        self.item_id = self._data.get('ItemID', None)
+        self.sku = self._data.get('SKU', None)
+        self.delivery = self._data.get('MaxDispatchTime', None)
+        self.active = kwargs.get('active', None)
+
+    def _get_data(self):
+        return self._data
+
+    data = property(_get_data)
+
+
+class EbayItemsList:
+    """collection of ebay items for generating bulkdata of it"""
+
+    def __init__(self, **kwargs):
+        self._keys = ['FixedPriceItem', 'InventoryStatus']
+        self._connection = sql_connect(sql_conf_ebay)
+        self.items = Item(unsorted=[], exclude=[], **{key: [] for key in self._keys})
+        self.pids = ebay_retrieve_pids(self._connection)
+
+    def add_item(self, item, cursor):
+        data = {'ItemID': item.item_id}
+        # TODO: verification of validity (item still exists in db? other issues..)
+        sql = 'SELECT id_product, reference, price, quantity, delivery, active FROM ebay_items WHERE ebay_id={}'
+        cursor.execute(sql.format(item.item_id))
+        pid, sku, price, quantity, delivery, active = cursor.fetchone()
+        if item.sku == sku:
+            data.update({'SKU': sku})
+            if item.delivery != delivery:
+                key = 'FixedPriceItem'
+                data.update({'MaxDispatchTime': delivery})
+            else:
+                key = 'InventoryStatus'
+            if item.quantity != quantity:
+                data.update({'Quantity': quantity})
+            if item.price != price:
+                data.update({'StartPrice': price})
+            if len(data) > 1:
+                self.items.__dict__[key].append(EbayItem(**data))
+            else:
+                self.items.unsorted.append(item)
+        else:
+            raise AttributeError
+
+    def add_items(self, items):
+        with self._connection.cursor() as cursor:
+            for item in items:
+                try:
+                    self.add_item(item, cursor)
+                except Exception as e:
+                    print('!! Error occurred [id: {}]: {}'.format(item.item_id, str(e)))
+
+    # should be in another place; preferably in a shop-lib / while updating the shop-db
+    def update_database(self, shop):
+        for pid in self.pids.keys():
+            shop_item = ShopItem(pid, shop)
+            if shop_item.active:
+                available = shop_item.available
+                delivery = shop_item.delivery
+                price = calc_ebay_price(shop_item.price_retail)
+                quantity = shop_item.quantity
+            else:
+                self.items.exclude.append(shop_item)
+
+
+# ## Classics ---------------------------
+'''
+class EbaySellerListXXX:
     """ebay 'GetSellerList' object for a given time period
 
     items = {'ItemID': 'SKU'}
@@ -233,11 +349,11 @@ class EbaySellerList:
             for iid in items.ids.keys():
                 sku = items.ids[iid]
                 try:
-                    item = EbayItem(iid)
+                    item = EbayItemXXX(iid)
                     item.fetch_data(cursor)
                 except Exception as e:
                     xxx = str(e)
-                    item = EbayItem(iid, sku=sku)
+                    item = EbayItemXXX(iid, sku=sku)
                     item.xxx = xxx
                     items.faulty.append(item)
                     print('!! {:s} [{:s}]: {:s}'.format(iid, sku, xxx))
@@ -273,7 +389,7 @@ class EbaySellerList:
                             item.fetch_data(cursor)
                             if len(item.data) <= 1:
                                 iid = item.item_id
-                                item = EbayItem(iid, pid=pid, sku=sku)
+                                item = EbayItemXXX(iid, pid=pid, sku=sku)
                                 item.delivery = 0
                                 item.price = 0
                                 item.quantity = 0
@@ -292,7 +408,7 @@ class EbaySellerList:
         print('   - the good ones..')
         for item in items.ok:
             try:
-                shopitem = ShopItem(item.pid, self._shop)
+                shopitem = ShopItem(item.pid, shop=self._shop)
                 delivery = 4
                 if shopitem.available == STR_DELIVER_LATE:
                     delivery = 15
@@ -323,96 +439,4 @@ class EbaySellerList:
                 if self.debug:
                     print('!! {:s} [{:s}]: {:s}'.format(item.item_id, item.sku, xxx))
     # return (items.ok, items.faulty)
-
-
-class EbayItem(Item):
-    """ eBay item class
-
-    keyword arguments:
-    item_id = eBay.ItemID *required*
-    pid = product ID / shop id_product
-    sku = item reference
-    price = eBay.Price
-    quantity = eBay.Quantity
-    delivery = eBay.DispatchTimeMax
-    #cursor = sql.cursor object
-    """
-
-    def __init__(self, **kwargs):
-        super(EbayItem, self).__init__()
-        self.item_id = kwargs.get('item_id', None)
-        self._price = kwargs.get('price', None)
-        self._quantity = kwargs.get('quantity', None)
-        self._delivery = kwargs.get('delivery', None)  # DispatchTimeMax
-        self.pid = kwargs.get('pid', '')
-        self.sku = kwargs.get('sku', '')
-        self._data = {'ItemID': self.item_id}
-
-    def _get_data(self):
-        return self._data
-
-    data = property(_get_data)
-
-    # TODO: generalize "revise"Type/Data. could be e.g. AddItem..
-    def _get_reviseData(self):
-        return dict2xml(self._data)
-
-    reviseData = property(_get_reviseData)
-
-    # TODO: generalize "revise"Type/Data. could be e.g. AddItem..
-    def _get_reviseType(self):
-        if len(self._data) > 1:
-            if 'DispatchTimeMax' in self._data.keys():
-                return 'FixedPriceItem'
-            else:
-                return 'InventoryStatus'
-        else:
-            return None
-
-    reviseType = property(_get_reviseType)
-
-    def _get_delivery(self):
-        return self._delivery
-
-    def _set_delivery(self, value):
-        if self._delivery != value:
-            self._delivery = value
-            self._data.update({'DispatchTimeMax': self._delivery})
-
-    delivery = property(_get_delivery, _set_delivery)
-
-    def _get_price(self):
-        return self._price
-
-    def _set_price(self, value):
-        if self._price != value:
-            self._price = value
-            self._data.update({'StartPrice': self._price})
-
-    price = property(_get_price, _set_price)
-
-    def _get_quantity(self):
-        return self._quantity
-
-    def _set_quantity(self, value):
-        if self._quantity != value:
-            self._quantity = value
-            self._data.update({'Quantity': self._quantity})
-
-    quantity = property(_get_quantity, _set_quantity)
-
-    def fetch_data(self, cursor):
-        """fetch data from the ebay_items db"""
-        sql = 'SELECT id_product, reference, price, quantity, delivery FROM ebay_items WHERE ebay_id={}'
-        cursor.execute(sql.format(self.item_id))
-        self.pid, self.sku, self._price, self._quantity, self._delivery = cursor.fetchone()
-
-    def update_data(self, cursor):
-        """update data in the ebay_items db"""
-        sql = 'UPDATE ebay_items SET price={}, quantity={}, delivery={} WHERE ebay_id={}'
-        cursor.execute(sql.format(self._price, self._quantity, self._delivery, self.item_id))
-
-    def insert_data(self, cursor):
-        sql = 'INSERT INTO ebay_items (ebay_id={}, id_product={}, reference={} price={}, quantity={}, delivery={})'
-        values = {}
-        cursor.execute(sql.format(**values))
+'''

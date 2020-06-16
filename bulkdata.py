@@ -36,7 +36,7 @@ class BulkData:
 	def __init__(self, **kwargs):
 		self._bdes_list = ['ReviseFixedPriceItem', 'ReviseInventoryStatus']
 		self._data = Item(**{key: [] for key in self._bdes_list})
-		#self._data = []
+		# self._data = []
 		self.fileReferenceId = kwargs.get('fileReferenceId', None)
 		self.jobId = kwargs.get('jobId', None)
 		self.jobType = kwargs.get('jobType', None)
@@ -100,4 +100,4 @@ class BulkData:
 		else:
 			raise NotImplementedError
 		self._bder = xml
-		#return xml
+		# return xml

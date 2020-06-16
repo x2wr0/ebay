@@ -42,8 +42,8 @@ class Connection(BaseConnection):
 		self.config.set('content_type', 'text/xml;charset=UTF-8')
 		self.config.set('request_encoding', 'XML')
 		self.config.set('response_encoding', 'XML')
-		#self.datetime_nodes = ['endtimefrom', 'endtimeto', 'timestamp']
-		#self.base_list_nodes = []
+		# self.datetime_nodes = ['endtimefrom', 'endtimeto', 'timestamp']
+		# self.base_list_nodes = []
 		self.uuid = uuid4()
 		self.file_type = self.config.get('file_type', 'gzip')
 		self.version = self.config.get('version', api_version)
@@ -61,10 +61,12 @@ class Connection(BaseConnection):
 			'Content-Type': self.config.get('content_type'),
 			'X-EBAY-SOA-SECURITY-TOKEN': self.config.get('token'),
 			'X-EBAY-SOA-OPERATION-NAME': verb}
-			#'X-EBAY-SOA-GLOBAL-ID': self.config.get('site-id'),
-			#'X-EBAY-REQUEST-DATA-FORMAT': self.config.get('request_encoding'),
-			#'X-EBAY-RESPONSE-DATA-FORMAT': self.config.get('response_encoding'),
-			#'X-EBAY-SOA-MESSAGE-PROTOCOL': self.config.get('message_protocol')}
+		'''
+			'X-EBAY-SOA-GLOBAL-ID': self.config.get('site-id'),
+			'X-EBAY-REQUEST-DATA-FORMAT': self.config.get('request_encoding'),
+			'X-EBAY-RESPONSE-DATA-FORMAT': self.config.get('response_encoding'),
+			'X-EBAY-SOA-MESSAGE-PROTOCOL': self.config.get('message_protocol')}
+		'''
 		if verb == 'uploadFile':
 			headers['X-EBAY-SOA-SERVICE-NAME'] = 'FileTransferService'
 		if verb == 'ReviseFixedPriceItem' or verb == 'ReviseInventoryStatus':
@@ -97,7 +99,6 @@ class Connection(BaseConnection):
 		# startUploadJobRequest
 		if verb == 'startUploadJob':
 			xml += '<{}Request {}>'.format(verb, xmlns)
-			#xml += '<UUID>{}</UUID>'.format(self.uuid)
 			xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
 			xml += '</{}Request>'.format(verb)
 
@@ -142,35 +143,16 @@ class Connection(BaseConnection):
 		if dom is None:
 			return errors
 
-		for e in dom.findall('error'):
-			eSeverity = None
-			eDomain = None
-			eMsg = None
-			eId = None
-
-			try:
-				eSeverity = e.findall('severity')[0].text
-			except IndexError:
-				pass
-			try:
-				eDomain = e.findall('domain')[0].text
-			except IndexError:
-				pass
-			try:
-				eMsg = e.findall('message')[0].text
-			except IndexError:
-				pass
-			try:
-				eId = e.findall('errorId')[0].text
-				if int(eId) not in resp_codes:
-					resp_codes.append(int(eId))
-			except IndexError:
-				pass
+		for error in dom.findall('error'):
+			error_severity = error.findtext('severity')
+			error_domain = error.findtext('domain')
+			error_message = error.findtext('message')
+			error_id = error.findtext('errorId')
 
 			msg = 'Domain: {:s}, Severity: {:s}, errorId: {:s}, {:s}'.format(
-				eDomain, eSeverity, eId, eMsg)
+				error_domain, error_severity, error_id, error_message)
 
-			if eSeverity == 'Warning':
+			if error_severity == 'Warning':
 				warnings.append(msg)
 			else:
 				errors.append(msg)

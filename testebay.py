@@ -3,7 +3,7 @@
 from libdrebo.shop import Shop, ShopProfile
 
 from . import Connection as Merchant
-from .accessories import EbaySellerList
+from .accessories import EbaySellerListXXX as EbaySellerList
 from .bulkdata import BulkData
 
 
@@ -19,7 +19,7 @@ print('\n:: jobType: %s..' % job_type)
 api.execute('getJobs')
 profile = api.response.reply.jobProfile[-1]
 if profile.get('jobStatus') == 'Created':
-	print('-- job allready created')
+	print('-- job already created')
 	jid = profile.get('jobId')
 	fid = profile.get('inputFileReferenceId')
 	if profile.get('jobType') == job_type:
