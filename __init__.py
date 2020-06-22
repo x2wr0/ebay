@@ -14,6 +14,7 @@ url_filetransfer = 'storage.ebay.com/FileTransferService'
 url_bulkexchange = 'webservices.ebay.com/BulkDataExchangeService'
 
 api_version = 1113
+side_id = 77
 
 
 class Connection(BaseConnection):
