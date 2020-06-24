@@ -10,12 +10,21 @@ from time import strftime
 
 from ebaysdk.trading import Connection as Trading
 
-from libdrebo.utils import dec, sql_connect, Item, QQ, QP
+from libdrebo.shop import ShopItem
+from libdrebo.utils import dec, sql_connect, Item, QQ, QP, STR_DELIVER_LATE
 from libdrebo.config import sql_conf_ebay
 
 EBAY_STR_FORMAT_TIME = '%Y-%m-%dT%H:%M:%S.000Z'
 EBAY_FACTOR = dec('1.08')
 TAX_DE = dec('1.19')
+
+_sql_ebay_select = "SELECT reference, price, quantity, delivery, active, vat_percent FROM ebay_items " \
+                   "WHERE id_product=%s"
+_sql_ebay_update = "UPDATE ebay_items SET price=%s, quantity=%s, delivery=%s, active=%s, vat_percent=%s " \
+                  "WHERE id_product=%s"
+# values = pid; iid; sku; price; quantity; delivery; active; vat_percent
+_sql_ebay_insert = "INSERT INTO ebay_items VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+_sql_ebay_deactivate = "UPDATE ebay_items SET quantity=0, active=0 WHERE id_product=%s"
 
 '''
 STR_DELIVER_SOON = 'deliver soon..'
@@ -83,6 +92,83 @@ def ebay_retrieve_iids(connection):
     return dict(cursor.fetchall())
 
 
+def _item_values(item):
+    prc = calc_ebay_price(item.price_retail)
+    act = item.active
+    if act:
+        qty = item.quantity
+        if qty <= 0:
+            qty = 0
+        elif qty > 50:
+            qty = 50
+    else:
+        qty = 0
+    if item.available == STR_DELIVER_LATE:
+        dly = 15
+    elif item.available == 'Lieferzeit DE 5 - 7 Tage / Lieferzeit Ausland 7 - 10 Tage':
+        dly = 6
+    else:
+        dly = 4
+    vat = 19
+    return prc, qty, dly, act, vat
+
+
+def _update_db(connection, shop):  # from shop
+    print('\n:: update ebay_items..')
+    a = u = x = 0  # a: (in)active(, i: inserted), u: updated, x: error
+    items = []
+    pids = ebay_retrieve_pids(connection)
+    shop.fetch_pids()
+    for pid in pids.keys():
+        prc = qty = dly = act = vat = '---'
+        iid = pids[pid]
+        with connection.cursor() as cursor:
+            cursor.execute(_sql_ebay_select, pid)
+            sku, e_prc, e_qty, e_dly, e_act, e_vat = cursor.fetchone()
+        try:
+            if pid in shop.pids.keys():
+                item = ShopItem(pid, shop)
+                # sku = item.sku
+                s_prc, s_qty, s_dly, s_act, s_vat = _item_values(item)
+                if s_act and s_qty == 0:
+                    s_qty = 10
+                    s_dly = 15
+                if not s_act:
+                    a += 1
+                    item.xxx = 'deactivated'
+                if e_prc == s_prc or e_qty == s_qty or e_dly == s_dly or e_act == s_act or e_vat == s_vat:
+                    prc = s_prc
+                    qty = s_qty
+                    dly = s_dly
+                    act = s_act
+                    vat = s_vat
+                    with connection.cursor() as cursor:
+                        cursor.execute(_sql_ebay_update, (prc, qty, dly, act, vat, pid))
+                    u += 1
+                    item.xxx = 'updated'
+                xxx = item.xxx
+            else:
+                with connection.cursor() as cursor:
+                    cursor.execute(_sql_ebay_deactivate, pid)
+                a += 1
+                xxx = 'not in shop, deactivated'
+
+        except Exception as e:
+            print('!! @update_db [pid: %s]: %s' % (pid, str(e)))
+            x += 1
+            xxx = str(e)
+
+        items.append((pid, iid, sku, prc, qty, dly, act, vat, xxx))
+
+    connection.commit()
+    print('   %s items processed. %s updated  %s deactivated  %s error(s)' % (len(items), u, a, x))
+    return items
+
+
+def _update_ebay_items(connection, items):  # from ebay
+    pass
+
+
 class Counter:
     def __init__(self, **kwargs):
         for key in kwargs:
@@ -134,7 +220,7 @@ class EbaySellerList:
             self.number_entries = int(self.api.response.reply.PaginationResult.TotalNumberOfEntries)
             self.number_pages = int(self.api.response.reply.PaginationResult.TotalNumberOfPages)
             self.items.extend(self._append_items(self.api.response.reply.ItemArray.Item))
-            print('   entries: {}  pages: {}'.format(self.number_entries, self.number_pages))
+            print('-- entries: {}  pages: {}'.format(self.number_entries, self.number_pages))
             print('   page: 1  entries: {}'.format(self.api.response.reply.ReturnedItemCountActual))
 
     def fetch_items_page(self, page, options=None):
@@ -197,42 +283,58 @@ class EbayItemsList:
         self._keys = ['FixedPriceItem', 'InventoryStatus']
         self._connection = sql_connect(sql_conf_ebay)
         self.items = Item(unsorted=[], exclude=[], **{key: [] for key in self._keys})
-        self.pids = ebay_retrieve_pids(self._connection)
+        self._sql_select = 'SELECT reference, price, quantity, delivery, active, vat_percent ' \
+                           'FROM ebay_items WHERE ebay_id=%s'
+        self._sql_insert = 'INSERT INTO ebay_items VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'
+        # self._pids = ebay_retrieve_pids(self._connection)
+        self._iids = ebay_retrieve_iids(self._connection)
         if items:
             self.add_items(items)
 
-    def add_item(self, item, cursor):
+    def add_item(self, item):
         data = {'ItemID': item.item_id}
         # TODO: verification of validity (item still exists in db? other issues..)
-        sql = 'SELECT id_product, reference, price, quantity, delivery, active, vat_percent ' \
-              'FROM ebay_items WHERE ebay_id=%s'
-        cursor.execute(sql, item.item_id)
-        pid, sku, price, quantity, delivery, active, vat_percent = cursor.fetchone()
-        if item.sku == sku:
-            data.update({'SKU': sku})
-            if item.delivery != delivery:
-                key = 'FixedPriceItem'
-                data.update({'DispatchTimeMax': delivery})
+        if item.item_id in self._iids.keys():
+            with self._connection.cursor() as cursor:
+                cursor.execute(self._sql_select, item.item_id)
+                sku, price, quantity, delivery, active, vat_percent = cursor.fetchone()
+
+            if item.sku == sku:
+                data.update({'SKU': sku})
+                if item.delivery != delivery:
+                    key = 'FixedPriceItem'
+                    data.update({'DispatchTimeMax': delivery})
+                else:
+                    key = 'InventoryStatus'
+                if item.quantity != quantity:
+                    data.update({'Quantity': quantity})
+                if item.price != price:
+                    data.update({'StartPrice': price})
+                if item.vat_percent != vat_percent:
+                    data.update({'VATPercent': vat_percent})
+                if len(data) > 1:
+                    self.items.__dict__[key].append(EbayItem(pid=pid, active=active, **data))
+                else:
+                    item.xxx = 'nothing to put'
+                    print('-- @add_item [id: %s]: %s' % (item.item_id, item.xxx))
+                    print('   append to items.unsorted')
+                    self.items.unsorted.append(item)
             else:
-                key = 'InventoryStatus'
-            if item.quantity != quantity:
-                data.update({'Quantity': quantity})
-            if item.price != price:
-                data.update({'StartPrice': price})
-            if item.vat_percent != vat_percent:
-                data.update({'VATPercent': vat_percent})
-            if len(data) > 1:
-                self.items.__dict__[key].append(EbayItem(pid=pid, active=active, **data))
-            else:
-                self.items.unsorted.append(item)
+                item.xxx = 'wrong sku'
+                print('!! @add_item [id: %s]: %s' % (item.item_id, item.xxx))
+                print('   append to items.exclude')
+                self.items.exclude.append(item)
         else:
-            raise AttributeError
+            with self._connection.cursor() as cursor:
+                cursor.execute(self._sql_insert, '...')
+            item.xxx = 'inserted into db'
+            print('-- @add_item [id: %s]: %s' % (item.item_id, item.xxx))
 
     def add_items(self, items):
-        with self._connection.cursor() as cursor:
-            for item in items:
-                try:
-                    self.add_item(item, cursor)
-                except Exception as e:
-                    print('!! Error occurred [id: {}]: {}'.format(item.item_id, str(e)))
-                    self.items.exclude.append(item)
+        for item in items:
+            try:
+                self.add_item(item)
+            except Exception as e:
+                print('!! @add_items [id: {}]: {}'.format(item.item_id, str(e)))
+                item.xxx = str(e)
+                self.items.exclude.append(item)

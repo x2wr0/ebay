@@ -1,41 +1,19 @@
 #! -*- coding: utf-8 -*-
 
 from libdrebo.shop import Shop, ShopProfile, ShopItem
-from libdrebo.utils import sql_connect, STR_DELIVER_LATE
+from libdrebo.utils import sql_connect
 from libdrebo.config import sql_conf_ebay
 
 from . import Connection as Merchant
-from .accessories import EbaySellerList, EbayItemsList, ebay_retrieve_iids, ebay_retrieve_pids, calc_ebay_price
+from .accessories import EbaySellerList, EbayItemsList
+from .accessories import ebay_retrieve_iids, ebay_retrieve_pids, _item_values
+from .accessories import _sql_ebay_deactivate, _sql_ebay_insert, _sql_ebay_update, _update_ebay_items
 from .bulkdata import BulkData
 
 
 _job_ok = False
 jobtype = 'ReviseInventoryStatus'
 # jobtype = 'ReviseFixedPriceItem'
-
-_sql_ebay_select = "SELECT price, quantity, delivery, active, vat_percent FROM ebay_items WHERE id_product=%s"
-_sql_ebay_update = "UPDATE ebay_items SET price=%s, quantity=%s, delivery=%s, active=%s, vat_percent=%s " \
-                  "WHERE id_product=%s"
-_sql_ebay_insert = "INSERT INTO ebay_items VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
-_sql_ebay_deactivate = "UPDATE ebay_items SET quantity=0, active=0 WHERE id_product=%s"
-
-
-def _item_values(item):
-    prc = calc_ebay_price(item.price_retail)
-    qty = item.quantity
-    if qty < 0:
-        qty = 0
-    elif qty > 50:
-        qty = 50
-    if item.available == STR_DELIVER_LATE:
-        dly = 15
-    elif item.available == 'Lieferzeit DE 5 - 7 Tage / Lieferzeit Ausland 7 - 10 Tage':
-        dly = 6
-    else:
-        dly = 4
-    act = item.active
-    vat = 19
-    return prc, qty, dly, act, vat
 
 
 def _update_ebay_db(items, db):
@@ -90,7 +68,7 @@ def _update_ebay_db(items, db):
             except Exception as e:
                 print('!! @insert [pid: %s, iid: %s]: %s' % (pid, iid, str(e)))
                 x += 1
-    print('-- %s items processed: %s updated, %s inserted, %s deactivated, %s errors' % (n, u, i, a, x))
+    print('   %s items processed: %s updated, %s inserted, %s deactivated, %s errors' % (n, u, i, a, x))
     db.commit()
 
 
