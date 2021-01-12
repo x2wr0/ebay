@@ -13,14 +13,17 @@ from . import url_bulkexchange, url_filetransfer, api_version, side_id
 
 
 class Connection(BaseConnection):
-    """Large Merchant Services Base Connection Class
+    """Large Merchant Services Connection Class
+    responsible for compiling the actual xml-construct (the request)
 
     API documentation:
     https://developer.ebay.com/DevZone/large-merchant-services/Concepts/MakingACall.html
 
     Supported calls:
     createUploadJob
+    createDownloadJob
     uploadFile
+    downloadFile
     *[ReviseInventoryStatus]*
     *[ReviseFixedPriceItem]*
     startUploadJob
@@ -53,6 +56,14 @@ class Connection(BaseConnection):
                 index = self._jobProfile.index(profile)
                 self._jobs_created.append(index)
 
+    # TODO: create a new interface (class) for a more pythonic interaction and move such things there..
+    # concept:
+    # lms.create_job(jobType) -> tries to create the job, configures all params and handles the response
+    # lms.upload_file(bulk) -> should track all influences and consequences
+    # lms.start_job(<job [no./id] or some index>) -> should know implicitly what this mean and what to do
+    # lms.get_job_status(<some id..>)
+    # and, if necessary, lms.abort_job(<some id..>)
+    # .. . .
     def _get_jobs_created(self):
         jobs = None
         if len(self._jobs_created) > 0:
@@ -67,7 +78,7 @@ class Connection(BaseConnection):
     jobs_created = property(_get_jobs_created)
 
     def build_request_url(self, verb):
-        if verb == 'uploadFile':
+        if verb == 'uploadFile' or verb == 'downloadFile':
             url = 'https://{:s}'.format(url_filetransfer)
         else:
             url = 'https://{:s}'.format(url_bulkexchange)
@@ -78,9 +89,9 @@ class Connection(BaseConnection):
             'Content-Type': self.config.get('content_type'),
             'X-EBAY-SOA-SECURITY-TOKEN': self.config.get('token'),
             'X-EBAY-SOA-OPERATION-NAME': verb}
-        if verb == 'uploadFile':
+        if verb == 'uploadFile' or verb == 'downloadFile':
             headers['X-EBAY-SOA-SERVICE-NAME'] = 'FileTransferService'
-        if verb == 'ReviseFixedPriceItem' or verb == 'ReviseInventoryStatus':
+        if verb == 'ReviseFixedPriceItem' or verb == 'ReviseInventoryStatus':  # ?else:?
             headers['X-EBAY-SOA-SERVICE-NAME'] = 'BulkDataExchangeService'
         return headers
 
@@ -107,10 +118,26 @@ class Connection(BaseConnection):
             xml += '</fileAttachment>'
             xml += '</{}Request>'.format(verb)
 
+        # downloadFileRequest
+        if verb == 'downloadFile':
+            xml += '<{}Request {}>'.format(verb, xmlns)
+            xml += '<fileReferenceId>{}</fileReferenceId>'.format(data.fileReferenceId)
+            xml += '<taskReferenceId>{}</taskReferenceId>'.format(data.jobId)
+            xml += '</{}Request>'.format(verb)
+
         # startUploadJobRequest
         if verb == 'startUploadJob':
             xml += '<{}Request {}>'.format(verb, xmlns)
-            xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
+            xml += '<jobId>{}</jobId>'.format(data)  # <BulkData.jobId>
+            xml += '</{}Request>'.format(verb)
+
+        # startDownloadJobRequest
+        if verb == 'startDownloadJob':
+            xml += '<{}Request {}>'.format(verb, xmlns)
+            xml += '<downloadJobType>{}</downloadJobType>'.format(data)  # '<jobType>'
+            if verb_attrs:
+                xml += '<downloadRequestFilter>{}</downloadRequestFilter>'.format(verb_attrs)
+            xml += '<UUID>{}</UUID>'.format(self.uuid)
             xml += '</{}Request>'.format(verb)
 
         # getJobsRequest
@@ -122,13 +149,13 @@ class Connection(BaseConnection):
         # getJobStatusRequest
         if verb == 'getJobStatus':
             xml += '<{}Request {}>'.format(verb, xmlns)
-            xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
+            xml += '<jobId>{}</jobId>'.format(data)  # <BulkData.jobId>
             xml += '</{}Request>'.format(verb)
 
         # abortJobRequest
         if verb == 'abortJob':
             xml += '<{}Request {}>'.format(verb, xmlns)
-            xml += '<jobId>{}</jobId>'.format(data.jobId)  # BulkData.jobId
+            xml += '<jobId>{}</jobId>'.format(data)  # <BulkData.jobId>
             xml += '</{}Request>'.format(verb)
 
         return xml

@@ -8,7 +8,7 @@ from libdrebo.shop import Shop, ShopProfile
 
 # from .connection import Connection as Merchant
 from accessories import EbaySellerList, EbayItemsList
-from bulkdata import BulkData
+from ebaylms.bulkdata import BulkData
 
 
 PATH = os.path.join(os.path.dirname(__file__), 'stuff')
